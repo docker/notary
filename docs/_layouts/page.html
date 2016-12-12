@@ -1,0 +1,21 @@
+{% include header.html %}
+
+<div class="hero">
+  <div class="navbar">
+    <div class="name"><a href="/">containerd<span class="org">By Docker</span></a></div>
+    <div class="actions">
+      {% include links.html %}
+    </div>
+  </div>
+  <p><strong>containerd</strong> - an industry-standard container runtime with an emphasis on simplicity, robustness and portability.</p>
+  <div class="hamster">
+    <img src="/images/sub.png">
+  </div>
+</div>
+<div class="content">
+  <div class="wrapper-details">
+      {{ content }}
+  </div>
+</div>
+
+{% include footer.html %}

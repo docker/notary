@@ -1,13 +1,7 @@
-<!--[metadata]>
-+++
-title = "Notary Command Reference"
-description = "Notary command reference"
-keywords = ["docker, notary, command, notary command, reference"]
-[menu.main]
-parent="mn_notary"
-weight=99
-+++
-<![end-metadata]-->
+---
+title: Notary Command Reference
+layout: page
+---
 
 # Notary Command Reference
 

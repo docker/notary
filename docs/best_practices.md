@@ -1,13 +1,7 @@
-<!--[metadata]>
-+++
-title = "Best Practices for Using Notary"
-description = "A set of recommended practices for key management, delegating trust, bootstrapping repos, and more."
-keywords = ["docker, Notary, notary-client, docker content trust, content trust", "best practices", "recommended use"]
-[menu.main]
-parent="mn_notary"
-weight=1
-+++
-<![end-metadata]-->
+---
+title: Best Practices for Using Notary
+layout: page
+---
 
 # Best Practices for Using Docker Notary
 

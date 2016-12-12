@@ -11,3 +11,6 @@ cross
 *.iml
 *.test
 coverage*.txt
+/docs/_site/
+/docs/.sass-cache/
+/docs/.jekyll-metadata

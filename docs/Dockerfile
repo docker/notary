@@ -1,9 +1,13 @@
-FROM docs/base:oss
-MAINTAINER Mary Anthony <mary@docker.com> (@moxiegirl)
+FROM ruby:latest
 
-ENV PROJECT=notary
+RUN apt update \
+	&& apt install -y --no-install-recommends \
+		npm \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& gem install bundler github-pages \
+	&& mkdir /www
 
-# To get the git info for this repo
-COPY . /src
-RUN rm -r /docs/content/$PROJECT/
-COPY . /docs/content/$PROJECT/
+WORKDIR /www
+
+ENTRYPOINT ["bundle", "exec", "jekyll", "serve", "--incremental"]
+CMD [ "--incremental", "--host", "0.0.0.0" ]

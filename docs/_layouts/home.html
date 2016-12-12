@@ -1,0 +1,21 @@
+{% include header.html %}
+
+<div class="hero">
+  <div class="navbar">
+    <div class="name"><a href="/">Notary<span class="org">By Docker</span></a></div>
+    <div class="actions">
+      {% include links.html %}
+    </div>
+  </div>
+  <p>a state of the art signing platform implementing The Update Framework</p>
+  <div class="hamster">
+    <img src="/images/notary.png">
+  </div>
+</div>
+<div class="content">
+  <div class="wrapper-details">
+      {{ content }}
+  </div>
+</div>
+
+{% include footer.html %}

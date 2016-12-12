@@ -1,14 +1,7 @@
-<!--[metadata]>
-+++
-title = "Understand the service architecture"
-description = "How the three requisite notary components interact"
-keywords = ["docker, notary, notary-client, docker content trust, content trust, notary-server, notary server, notary-signer, notary signer, notary architecture"]
-[menu.main]
-parent="mn_notary"
-weight=3
-+++
-<![end-metadata]-->
-
+---
+title: Understand the service architecture
+layout: page
+---
 
 # Understand the Notary service architecture
 
