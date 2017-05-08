@@ -194,7 +194,7 @@ func createRepoAndKey(t *testing.T, rootType, tempBaseDir, gun, url string) (
 		tempBaseDir, data.GUN(gun), url, http.DefaultTransport, rec.retriever, trustpinning.TrustPinConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
-	rootPubKey, err := repo.CryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
+	rootPubKey, err := repo.cryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
 	require.NoError(t, err, "error generating root key: %s", err)
 
 	rec.requireCreated(t, []string{data.CanonicalRootRole.String()},
@@ -316,7 +316,7 @@ func TestInitRepositoryMultipleRootKeys(t *testing.T) {
 
 	repo, rec, rootPubKeyID := createRepoAndKey(
 		t, data.ECDSAKey, tempBaseDir, "docker.com/notary", ts.URL)
-	rootPubKey2, err := repo.CryptoService.Create(data.CanonicalRootRole, repo.gun, data.ECDSAKey)
+	rootPubKey2, err := repo.cryptoService.Create(data.CanonicalRootRole, repo.gun, data.ECDSAKey)
 	require.NoError(t, err, "error generating second root key: %s", err)
 
 	err = repo.Initialize([]string{rootPubKeyID, rootPubKey2.ID()}, data.CanonicalTimestampRole)
@@ -580,7 +580,7 @@ func testInitRepoAttemptsExceeded(t *testing.T, rootType string) {
 	retriever := passphrase.ConstantRetriever("password")
 	repo, err := NewFileCachedNotaryRepository(tempBaseDir, gun, ts.URL, http.DefaultTransport, retriever, trustpinning.TrustPinConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
-	rootPubKey, err := repo.CryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
+	rootPubKey, err := repo.cryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
 	require.NoError(t, err, "error generating root key: %s", err)
 
 	retriever = passphrase.ConstantRetriever("incorrect password")
@@ -618,7 +618,7 @@ func testInitRepoPasswordInvalid(t *testing.T, rootType string) {
 	retriever := passphrase.ConstantRetriever("password")
 	repo, err := NewFileCachedNotaryRepository(tempBaseDir, gun, ts.URL, http.DefaultTransport, retriever, trustpinning.TrustPinConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
-	rootPubKey, err := repo.CryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
+	rootPubKey, err := repo.cryptoService.Create(data.CanonicalRootRole, repo.gun, rootType)
 	require.NoError(t, err, "error generating root key: %s", err)
 
 	// repo.CryptoService’s FileKeyStore caches the unlocked private key, so to test
@@ -1046,7 +1046,7 @@ func fakeServerData(t *testing.T, repo *NotaryRepository, mux *http.ServeMux,
 	timestampKey, ok := keys[data.CanonicalTimestampRole.String()]
 	require.True(t, ok)
 	// Add timestamp key via the server's cryptoservice so it can sign
-	repo.CryptoService.AddKey(data.CanonicalTimestampRole, repo.gun, timestampKey)
+	repo.cryptoService.AddKey(data.CanonicalTimestampRole, repo.gun, timestampKey)
 
 	savedTUFRepo := repo.tufRepo // in case this is overwritten
 
@@ -1253,7 +1253,7 @@ func testListTargetWithDelegates(t *testing.T, rootType string) {
 	currentTarget := addTarget(t, repo, "current", "../fixtures/intermediate-ca.crt")
 
 	// setup delegated targets/level1 role
-	k, err := repo.CryptoService.Create("targets/level1", repo.gun, rootType)
+	k, err := repo.cryptoService.Create("targets/level1", repo.gun, rootType)
 	require.NoError(t, err)
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level1", []data.PublicKey{k}, []string{}, 1)
 	require.NoError(t, err)
@@ -1263,7 +1263,7 @@ func testListTargetWithDelegates(t *testing.T, rootType string) {
 	otherTarget := addTarget(t, repo, "other", "../fixtures/root-ca.crt", "targets/level1")
 
 	// setup delegated targets/level2 role
-	k, err = repo.CryptoService.Create("targets/level2", repo.gun, rootType)
+	k, err = repo.cryptoService.Create("targets/level2", repo.gun, rootType)
 	require.NoError(t, err)
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level2", []data.PublicKey{k}, []string{}, 1)
 	require.NoError(t, err)
@@ -1295,7 +1295,7 @@ func testListTargetWithDelegates(t *testing.T, rootType string) {
 
 	// setup delegated targets/level1/level2 role separately, which can only modify paths prefixed with "level2"
 	// This is done separately due to target shadowing
-	k, err = repo.CryptoService.Create("targets/level1/level2", repo.gun, rootType)
+	k, err = repo.cryptoService.Create("targets/level1/level2", repo.gun, rootType)
 	require.NoError(t, err)
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level1/level2", []data.PublicKey{k}, []string{}, 1)
 	require.NoError(t, err)
@@ -1407,7 +1407,7 @@ func TestListTargetRestrictsDelegationPaths(t *testing.T) {
 	require.NoError(t, err, "error creating repository: %s", err)
 
 	// setup delegated targets/level1 role
-	k, err := repo.CryptoService.Create("targets/level1", repo.gun, data.ECDSAKey)
+	k, err := repo.cryptoService.Create("targets/level1", repo.gun, data.ECDSAKey)
 	require.NoError(t, err)
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level1", []data.PublicKey{k}, []string{}, 1)
 	require.NoError(t, err)
@@ -1850,11 +1850,11 @@ func testPublishNoOneHasSnapshotKey(t *testing.T, rootType string) {
 	snapshotRole, ok := repo.tufRepo.Root.Signed.Roles[data.CanonicalSnapshotRole]
 	require.True(t, ok)
 	for _, keyID := range snapshotRole.KeyIDs {
-		repo.CryptoService.RemoveKey(keyID)
+		repo.cryptoService.RemoveKey(keyID)
 	}
 
 	// ensure that the cryptoservice no longer has any snapshot keys
-	require.Len(t, repo.CryptoService.ListKeys(data.CanonicalSnapshotRole), 0)
+	require.Len(t, repo.cryptoService.ListKeys(data.CanonicalSnapshotRole), 0)
 
 	// Publish something
 	addTarget(t, repo, "v1", "../fixtures/intermediate-ca.crt")
@@ -2002,7 +2002,7 @@ func TestPublishSnapshotLocalKeysCreatedFirst(t *testing.T) {
 	rootPubKey, err := cs.Create(data.CanonicalRootRole, gun, data.ECDSAKey)
 	require.NoError(t, err, "error generating root key: %s", err)
 
-	repo.CryptoService = cannotCreateKeys{CryptoService: cs}
+	repo.cryptoService = cannotCreateKeys{CryptoService: cs}
 
 	err = repo.Initialize([]string{rootPubKey.ID()}, data.CanonicalSnapshotRole)
 	require.Error(t, err)
@@ -2011,12 +2011,12 @@ func TestPublishSnapshotLocalKeysCreatedFirst(t *testing.T) {
 }
 
 func createKey(t *testing.T, repo *NotaryRepository, role data.RoleName, x509 bool) data.PublicKey {
-	key, err := repo.CryptoService.Create(role, repo.gun, data.ECDSAKey)
+	key, err := repo.cryptoService.Create(role, repo.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating key")
 
 	if x509 {
 		start := time.Now().AddDate(0, 0, -1)
-		privKey, _, err := repo.CryptoService.GetPrivateKey(key.ID())
+		privKey, _, err := repo.cryptoService.GetPrivateKey(key.ID())
 		require.NoError(t, err)
 		cert, err := cryptoservice.GenerateCertificate(
 			privKey, data.GUN(role), start, start.AddDate(1, 0, 0),
@@ -2233,9 +2233,9 @@ func TestPublishTargetsDelegationNoTargetsKeyNeeded(t *testing.T) {
 	rec.clear()
 
 	// remove targets key - it is not even needed
-	targetsKeys := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	targetsKeys := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 	require.Len(t, targetsKeys, 1)
-	require.NoError(t, repo.CryptoService.RemoveKey(targetsKeys[0]))
+	require.NoError(t, repo.cryptoService.RemoveKey(targetsKeys[0]))
 
 	requirePublishToRolesSucceeds(t, repo,
 		[]data.RoleName{"targets/a/b"}, []data.RoleName{"targets/a/b"})
@@ -2268,11 +2268,11 @@ func TestPublishTargetsDelegationSuccessNeedsToDownloadRoles(t *testing.T) {
 	defer os.RemoveAll(delgRepo.baseDir)
 
 	// create a key on the owner repo
-	aKey, err := ownerRepo.CryptoService.Create("targets/a", gun, data.ECDSAKey)
+	aKey, err := ownerRepo.cryptoService.Create("targets/a", gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// create a key on the delegated repo
-	bKey, err := delgRepo.CryptoService.Create("targets/a/b", gun, data.ECDSAKey)
+	bKey, err := delgRepo.cryptoService.Create("targets/a/b", gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// clear metadata and unencrypted private key cache
@@ -2333,11 +2333,11 @@ func TestPublishTargetsDelegationFromTwoRepos(t *testing.T) {
 	defer os.RemoveAll(repo2.baseDir)
 
 	// create keys for each repo
-	key1, err := repo1.CryptoService.Create("targets/a", repo1.gun, data.ECDSAKey)
+	key1, err := repo1.cryptoService.Create("targets/a", repo1.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// create a key on the delegated repo
-	key2, err := repo2.CryptoService.Create("targets/a", repo2.gun, data.ECDSAKey)
+	key2, err := repo2.cryptoService.Create("targets/a", repo2.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// delegation includes both keys
@@ -2407,7 +2407,7 @@ func TestPublishRemoveDelegationKeyFromDelegationRole(t *testing.T) {
 	defer os.RemoveAll(delgRepo.baseDir)
 
 	// create a key on the delegated repo
-	aKey, err := delgRepo.CryptoService.Create("targets/a", delgRepo.gun, data.ECDSAKey)
+	aKey, err := delgRepo.cryptoService.Create("targets/a", delgRepo.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// owner creates delegation, adds the delegated key to it, and publishes it
@@ -2422,7 +2422,7 @@ func TestPublishRemoveDelegationKeyFromDelegationRole(t *testing.T) {
 
 	// owner revokes delegation
 	// note there is no removekeyfromdelegation yet, so here's a hack to do so
-	newKey, err := ownerRepo.CryptoService.Create("targets/a", ownerRepo.gun, data.ECDSAKey)
+	newKey, err := ownerRepo.cryptoService.Create("targets/a", ownerRepo.gun, data.ECDSAKey)
 	require.NoError(t, err)
 	tdJSON, err := json.Marshal(&changelist.TUFDelegation{
 		NewThreshold: 1,
@@ -2471,7 +2471,7 @@ func TestPublishRemoveDelegation(t *testing.T) {
 	defer os.RemoveAll(delgRepo.baseDir)
 
 	// create a key on the delegated repo
-	aKey, err := delgRepo.CryptoService.Create("targets/a", delgRepo.gun, data.ECDSAKey)
+	aKey, err := delgRepo.cryptoService.Create("targets/a", delgRepo.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	// owner creates delegation, adds the delegated key to it, and publishes it
@@ -2506,7 +2506,7 @@ func TestPublishSucceedsDespiteDelegationCorrupt(t *testing.T) {
 	repo, _ := initializeRepo(t, data.ECDSAKey, "docker.com/notary", ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
 
-	delgKey, err := repo.CryptoService.Create("targets/a", repo.gun, data.ECDSAKey)
+	delgKey, err := repo.cryptoService.Create("targets/a", repo.gun, data.ECDSAKey)
 	require.NoError(t, err, "error creating delegation key")
 
 	require.NoError(t,
@@ -2529,7 +2529,7 @@ func TestRotateKeyInvalidRole(t *testing.T) {
 	defer os.RemoveAll(repo.baseDir)
 
 	// create a delegation
-	pubKey, err := repo.CryptoService.Create("targets/releases", data.GUN("docker.com/notary"), data.ECDSAKey)
+	pubKey, err := repo.cryptoService.Create("targets/releases", data.GUN("docker.com/notary"), data.ECDSAKey)
 	require.NoError(t, err)
 	require.NoError(t, repo.AddDelegation("targets/releases", []data.PublicKey{pubKey}, []string{""}))
 	require.NoError(t, repo.Publish())
@@ -2680,7 +2680,7 @@ func requireRotationSuccessful(t *testing.T, repo1 *NotaryRepository, keysToRota
 					canonicalID, err := utils.CanonicalKeyID(oldPubKey)
 					require.NoError(t, err)
 
-					_, _, err = repo.CryptoService.GetPrivateKey(canonicalID)
+					_, _, err = repo.cryptoService.GetPrivateKey(canonicalID)
 					switch roleName {
 					case data.CanonicalRootRole:
 						require.NoError(t, err)
@@ -2697,7 +2697,7 @@ func requireRotationSuccessful(t *testing.T, repo1 *NotaryRepository, keysToRota
 				canonicalID, err := utils.CanonicalKeyID(pubKey)
 				require.NoError(t, err)
 
-				key, _, err := repo.CryptoService.GetPrivateKey(canonicalID)
+				key, _, err := repo.cryptoService.GetPrivateKey(canonicalID)
 				if isRemoteKey {
 					require.Error(t, err)
 					require.Nil(t, key)
@@ -2993,9 +2993,9 @@ func TestRotateRootKeyProvided(t *testing.T) {
 	require.NoError(t, err)
 
 	// Key loaded from file (just generating it here)
-	rootPublicKey, err := authorRepo.CryptoService.Create(data.CanonicalRootRole, "", data.ECDSAKey)
+	rootPublicKey, err := authorRepo.cryptoService.Create(data.CanonicalRootRole, "", data.ECDSAKey)
 	require.NoError(t, err)
-	rootPrivateKey, _, err := authorRepo.CryptoService.GetPrivateKey(rootPublicKey.ID())
+	rootPrivateKey, _, err := authorRepo.cryptoService.GetPrivateKey(rootPublicKey.ID())
 	require.NoError(t, err)
 
 	// Fail to rotate to bad key
@@ -3082,7 +3082,7 @@ func TestRotateRootKeyLegacySupport(t *testing.T) {
 	logRepoTrustRoot(t, "post-rotate", authorRepo)
 
 	// Rotate root certificate and key again, this time with legacy support
-	authorRepo.LegacyVersions = SignWithAllOldVersions
+	authorRepo.SetLegacyVersions(SignWithAllOldVersions)
 	err = authorRepo.RotateKey(data.CanonicalRootRole, false, nil)
 	require.NoError(t, err)
 	logRepoTrustRoot(t, "post-rotate-again", authorRepo)
@@ -3175,9 +3175,9 @@ func TestAddDelegationChangefileValid(t *testing.T) {
 	repo, _ := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
 
-	targetKeyIds := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	targetKeyIds := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 	require.NotEmpty(t, targetKeyIds)
-	targetPubKey := repo.CryptoService.GetKey(targetKeyIds[0])
+	targetPubKey := repo.cryptoService.GetKey(targetKeyIds[0])
 	require.NotNil(t, targetPubKey)
 
 	err := repo.AddDelegation(data.CanonicalRootRole, []data.PublicKey{targetPubKey}, []string{""})
@@ -3213,9 +3213,9 @@ func TestAddDelegationChangefileApplicable(t *testing.T) {
 	repo, _ := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
 
-	targetKeyIds := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	targetKeyIds := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 	require.NotEmpty(t, targetKeyIds)
-	targetPubKey := repo.CryptoService.GetKey(targetKeyIds[0])
+	targetPubKey := repo.cryptoService.GetKey(targetKeyIds[0])
 	require.NotNil(t, targetPubKey)
 
 	// this hierarchy has to be right to be applied
@@ -3245,9 +3245,9 @@ func TestAddDelegationChangefileApplicable(t *testing.T) {
 // to be propagated.
 func TestAddDelegationErrorWritingChanges(t *testing.T) {
 	testErrorWritingChangefiles(t, func(repo *NotaryRepository) error {
-		targetKeyIds := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+		targetKeyIds := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 		require.NotEmpty(t, targetKeyIds)
-		targetPubKey := repo.CryptoService.GetKey(targetKeyIds[0])
+		targetPubKey := repo.cryptoService.GetKey(targetKeyIds[0])
 		require.NotNil(t, targetPubKey)
 
 		return repo.AddDelegation("targets/a", []data.PublicKey{targetPubKey}, []string{""})
@@ -3264,7 +3264,7 @@ func TestRemoveDelegationChangefileValid(t *testing.T) {
 
 	repo, rootKeyID := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
-	rootPubKey := repo.CryptoService.GetKey(rootKeyID)
+	rootPubKey := repo.cryptoService.GetKey(rootKeyID)
 	require.NotNil(t, rootPubKey)
 
 	err := repo.RemoveDelegationKeys(data.CanonicalRootRole, []string{rootKeyID})
@@ -3295,7 +3295,7 @@ func TestRemoveDelegationChangefileApplicable(t *testing.T) {
 
 	repo, rootKeyID := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
-	rootPubKey := repo.CryptoService.GetKey(rootKeyID)
+	rootPubKey := repo.cryptoService.GetKey(rootKeyID)
 	require.NotNil(t, rootPubKey)
 
 	// add a delegation first so it can be removed
@@ -3331,7 +3331,7 @@ func TestClearAllPathsDelegationChangefileApplicable(t *testing.T) {
 
 	repo, rootKeyID := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
-	rootPubKey := repo.CryptoService.GetKey(rootKeyID)
+	rootPubKey := repo.cryptoService.GetKey(rootKeyID)
 	require.NotNil(t, rootPubKey)
 
 	// add a delegation first so it can be removed
@@ -3361,10 +3361,10 @@ func TestFullAddDelegationChangefileApplicable(t *testing.T) {
 
 	repo, rootKeyID := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
-	rootPubKey := repo.CryptoService.GetKey(rootKeyID)
+	rootPubKey := repo.cryptoService.GetKey(rootKeyID)
 	require.NotNil(t, rootPubKey)
 
-	key2, err := repo.CryptoService.Create("user", repo.gun, data.ECDSAKey)
+	key2, err := repo.cryptoService.Create("user", repo.gun, data.ECDSAKey)
 	require.NoError(t, err)
 
 	var delegationName data.RoleName = "targets/a"
@@ -3403,10 +3403,10 @@ func TestFullRemoveDelegationChangefileApplicable(t *testing.T) {
 
 	repo, rootKeyID := initializeRepo(t, data.ECDSAKey, gun, ts.URL, false)
 	defer os.RemoveAll(repo.baseDir)
-	rootPubKey := repo.CryptoService.GetKey(rootKeyID)
+	rootPubKey := repo.cryptoService.GetKey(rootKeyID)
 	require.NotNil(t, rootPubKey)
 
-	key2, err := repo.CryptoService.Create("user", repo.gun, data.ECDSAKey)
+	key2, err := repo.cryptoService.Create("user", repo.gun, data.ECDSAKey)
 	require.NoError(t, err)
 	key2CanonicalID, err := utils.CanonicalKeyID(key2)
 	require.NoError(t, err)
@@ -3829,7 +3829,7 @@ func TestGetAllTargetInfo(t *testing.T) {
 	targetsCurrentTarget := addTarget(t, repo, "current", "../fixtures/intermediate-ca.crt")
 
 	// setup delegated targets/level1 role with targets current and other
-	k, err := repo.CryptoService.Create("targets/level1", repo.gun, rootType)
+	k, err := repo.cryptoService.Create("targets/level1", repo.gun, rootType)
 	require.NoError(t, err)
 	key1 := k
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level1", []data.PublicKey{k}, []string{}, 1)
@@ -3840,7 +3840,7 @@ func TestGetAllTargetInfo(t *testing.T) {
 	level1OtherTarget := addTarget(t, repo, "other", "../fixtures/root-ca.crt", "targets/level1")
 
 	// setup delegated targets/level2 role with targets current and level2
-	k, err = repo.CryptoService.Create("targets/level2", repo.gun, rootType)
+	k, err = repo.cryptoService.Create("targets/level2", repo.gun, rootType)
 	require.NoError(t, err)
 	key2 := k
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level2", []data.PublicKey{k}, []string{}, 1)
@@ -3871,7 +3871,7 @@ func TestGetAllTargetInfo(t *testing.T) {
 
 	// setup delegated targets/level1/level2 role separately, which can only modify paths prefixed with "level2"
 	// add level2 to targets/level1/level2
-	k, err = repo.CryptoService.Create("targets/level1/level2", repo.gun, rootType)
+	k, err = repo.cryptoService.Create("targets/level1/level2", repo.gun, rootType)
 	require.NoError(t, err)
 	key3 := k
 	err = repo.tufRepo.UpdateDelegationKeys("targets/level1/level2", []data.PublicKey{k}, []string{}, 1)
@@ -3901,7 +3901,7 @@ func TestGetAllTargetInfo(t *testing.T) {
 		level2Level2       = expectation{role: "targets/level2", target: "level2"}
 		level1Level2Level2 = expectation{role: "targets/level1/level2", target: "level2"}
 	)
-	targetsKey := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)[0]
+	targetsKey := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)[0]
 	allExpected := map[expectation]TargetSignedStruct{
 		targetCurrent: {
 			Target: *targetsCurrentTarget,

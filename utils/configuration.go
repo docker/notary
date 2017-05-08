@@ -52,11 +52,35 @@ func GetPathRelativeToConfig(configuration *viper.Viper, key string) string {
 // The cert/key files are relative to the config file used to populate the instance
 // of viper.
 func ParseServerTLS(configuration *viper.Viper, tlsRequired bool) (*tls.Config, error) {
-	//  unmarshalling into objects does not seem to pick up env vars
+	tlsOpts, err := ParseTLS(configuration, "server", tlsRequired)
+	if err != nil {
+		return nil, err
+	}
+	return tlsconfig.Server(tlsOpts)
+}
+
+// ParseTLS tries to parse out valid server TLS options from a Viper.
+// The cert/key files are relative to the config file used to populate the instance
+// of viper.
+func ParseTLS(configuration *viper.Viper, prefix string, tlsRequired bool) (tlsconfig.Options, error) {
+	rootCA := GetPathRelativeToConfig(
+		configuration,
+		strings.Join([]string{prefix, "tls_ca_file"}, "."),
+	)
+	clientCert := GetPathRelativeToConfig(
+		configuration,
+		strings.Join([]string{prefix, "tls_cert_file"}, "."),
+	)
+	clientKey := GetPathRelativeToConfig(
+		configuration,
+		strings.Join([]string{prefix, "tls_key_file"}, "."),
+	)
+	logrus.Infof("tls files: \nCA: %s\ncert: %s\nkey: %s", rootCA, clientCert, clientKey)
+
 	tlsOpts := tlsconfig.Options{
-		CertFile: GetPathRelativeToConfig(configuration, "server.tls_cert_file"),
-		KeyFile:  GetPathRelativeToConfig(configuration, "server.tls_key_file"),
-		CAFile:   GetPathRelativeToConfig(configuration, "server.client_ca_file"),
+		CertFile: clientCert,
+		KeyFile:  clientKey,
+		CAFile:   rootCA,
 	}
 	if tlsOpts.CAFile != "" {
 		tlsOpts.ClientAuth = tls.RequireAndVerifyClientCert
@@ -65,16 +89,16 @@ func ParseServerTLS(configuration *viper.Viper, tlsRequired bool) (*tls.Config, 
 	if !tlsRequired {
 		cert, key, ca := tlsOpts.CertFile, tlsOpts.KeyFile, tlsOpts.CAFile
 		if cert == "" && key == "" && ca == "" {
-			return nil, nil
+			return tlsconfig.Options{}, nil
 		}
 
 		if (cert == "" && key != "") || (cert != "" && key == "") || (cert == "" && key == "" && ca != "") {
-			return nil, fmt.Errorf(
+			return tlsconfig.Options{}, fmt.Errorf(
 				"either include both a cert and key file, or no TLS information at all to disable TLS")
 		}
 	}
 
-	return tlsconfig.Server(tlsOpts)
+	return tlsOpts, nil
 }
 
 // ParseLogLevel tries to parse out a log level from a Viper.  If there is no

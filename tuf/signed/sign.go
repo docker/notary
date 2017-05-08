@@ -33,8 +33,6 @@ func Sign(service CryptoService, s *data.Signed, signingKeys []data.PublicKey,
 	minSignatures int, otherWhitelistedKeys []data.PublicKey) error {
 
 	logrus.Debugf("sign called with %d/%d required keys", minSignatures, len(signingKeys))
-	signatures := make([]data.Signature, 0, len(s.Signatures)+1)
-	signingKeyIDs := make(map[string]struct{})
 	tufIDs := make(map[string]data.PublicKey)
 
 	privKeys := make(map[string]data.PrivateKey)
@@ -71,7 +69,22 @@ func Sign(service CryptoService, s *data.Signed, signingKeys []data.PublicKey,
 			NeededKeys: minSignatures, MissingKeyIDs: missingKeyIDs}
 	}
 
-	emptyStruct := struct{}{}
+	return SignWithPrivateKeys(s, privKeys, tufIDs)
+}
+
+// SignWithPrivateKeys takes a data.Signed object a set of private keys, and a set of public keys.
+// It signed the data.Signed object using the private keys, then prunes any old signatures, keeping
+// only those that are still for a valid key (as indicated by presence in tufIDs), and for which the
+// the signature is still valid.
+// N.B. all new signatures generated from the list of private keys are kept regardless of whether they
+// are valid or not.
+// N.B.B the privKeys map _must_ use non-Canonical IDs if your public keys happen to be certificates.
+func SignWithPrivateKeys(s *data.Signed, privKeys map[string]data.PrivateKey, tufIDs map[string]data.PublicKey) error {
+	var (
+		signingKeyIDs = make(map[string]struct{})
+		signatures    = make([]data.Signature, 0, len(s.Signatures)+1)
+		emptyStruct   = struct{}{}
+	)
 	// Do signing and generate list of signatures
 	for keyID, pk := range privKeys {
 		sig, err := pk.Sign(rand.Reader, *s.Signed, nil)

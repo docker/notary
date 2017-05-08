@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/docker/notary"
-	notaryclient "github.com/docker/notary/client"
 	"github.com/docker/notary/tuf/data"
 	"github.com/docker/notary/tuf/utils"
 	"github.com/spf13/cobra"
@@ -98,19 +97,8 @@ func (d *delegationCommander) delegationPurgeKeys(cmd *cobra.Command, args []str
 		return err
 	}
 
-	trustPin, err := getTrustPinning(config)
-	if err != nil {
-		return err
-	}
-
-	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
-		config.GetString("trust_dir"),
-		gun,
-		getRemoteTrustServer(config),
-		nil,
-		d.retriever,
-		trustPin,
-	)
+	fact := ConfigureRepo(config, d.retriever, false)
+	nRepo, err := fact(gun)
 	if err != nil {
 		return err
 	}
@@ -142,19 +130,8 @@ func (d *delegationCommander) delegationsList(cmd *cobra.Command, args []string)
 
 	gun := data.GUN(args[0])
 
-	rt, err := getTransport(config, gun, readOnly)
-	if err != nil {
-		return err
-	}
-
-	trustPin, err := getTrustPinning(config)
-	if err != nil {
-		return err
-	}
-
-	// initialize repo with transport to get latest state of the world before listing delegations
-	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
-		config.GetString("trust_dir"), gun, getRemoteTrustServer(config), rt, d.retriever, trustPin)
+	fact := ConfigureRepo(config, d.retriever, true)
+	nRepo, err := fact(gun)
 	if err != nil {
 		return err
 	}
@@ -177,15 +154,8 @@ func (d *delegationCommander) delegationRemove(cmd *cobra.Command, args []string
 		return err
 	}
 
-	trustPin, err := getTrustPinning(config)
-	if err != nil {
-		return err
-	}
-
-	// no online operations are performed by add so the transport argument
-	// should be nil
-	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
-		config.GetString("trust_dir"), gun, getRemoteTrustServer(config), nil, d.retriever, trustPin)
+	fact := ConfigureRepo(config, d.retriever, false)
+	nRepo, err := fact(gun)
 	if err != nil {
 		return err
 	}
@@ -307,15 +277,8 @@ func (d *delegationCommander) delegationAdd(cmd *cobra.Command, args []string) e
 
 	checkAllPaths(d)
 
-	trustPin, err := getTrustPinning(config)
-	if err != nil {
-		return err
-	}
-
-	// no online operations are performed by add so the transport argument
-	// should be nil
-	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
-		config.GetString("trust_dir"), gun, getRemoteTrustServer(config), nil, d.retriever, trustPin)
+	fact := ConfigureRepo(config, d.retriever, false)
+	nRepo, err := fact(gun)
 	if err != nil {
 		return err
 	}

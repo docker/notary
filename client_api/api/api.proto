@@ -1,0 +1,341 @@
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/Empty.proto";
+
+// Notary Interface
+service Notary {
+    rpc Initialize(InitMessage) returns (BasicResponse) {}
+    rpc Publish(GunMessage) returns (BasicResponse) {}
+
+    // AddTarget adds a target to the TUF repository and re-signs.
+    rpc AddTarget(Target) returns (BasicResponse) {}
+    // RemoveTarget deletes a target from the TUF repository and re-signs. It only
+    // uses the `name` field from the Target object, ignoring all other fields
+    rpc RemoveTarget(Target) returns (BasicResponse) {}
+    // ListTargets list the targets for the specified roles in the TUF repository
+    rpc ListTargets(RoleNameListMessage) returns (TargetWithRoleNameListResponse) {}
+    // GetTargetByName returns a target by the given name.
+    rpc GetTargetByName(TargetByNameAction) returns (TargetWithRoleResponse) {}
+    // GetAllTargetMetadataByName
+    rpc GetAllTargetMetadataByName(TargetNameMessage) returns (TargetSignedListResponse) {}
+
+    rpc ListRoles(GunMessage) returns (RoleWithSignaturesListResponse) {}
+    rpc GetDelegationRoles(GunMessage) returns (RoleListResponse) {}
+    rpc AddDelegation(AddDelegationMessage) returns (BasicResponse) {}
+    rpc AddDelegationRoleAndKeys(AddDelegationRoleAndKeysMessage) returns (BasicResponse) {}
+    rpc AddDelegationPaths(AddDelegationPathsMessage) returns (BasicResponse) {}
+    rpc RemoveDelegationKeysAndPaths(RemoveDelegationKeysAndPathsMessage) returns (BasicResponse) {}
+    rpc RemoveDelegationRole(RemoveDelegationRoleMessage) returns (BasicResponse) {}
+    rpc RemoveDelegationPaths(RemoveDelegationPathsMessage) returns (BasicResponse) {}
+    rpc RemoveDelegationKeys(RemoveDelegationKeysMessage) returns (BasicResponse) {}
+    rpc ClearDelegationPaths(RoleNameMessage) returns (BasicResponse) {}
+
+    rpc Witness(RoleNameListMessage) returns (RoleNameListResponse) {}
+
+    rpc RotateKey(RotateKeyMessage) returns (BasicResponse) {}
+
+    // CryptoService implementation
+    rpc CryptoServiceCreate(CryptoServiceCreateMessage) returns (PublicKeyResponse) {}
+//    rpc CryptoServicePrivateKeySign(CryptoServicePrivateKeySignMessage) returns (SignatureResponse) {}
+    rpc CryptoServiceAddKey(CryptoServiceAddKeyMessage) returns (BasicResponse) {}
+    rpc CryptoServiceGetKey(KeyIDMessage) returns (PublicKeyResponse) {}
+//    rpc CryptoServiceGetPrivateKey(KeyIDMessage) returns (PrivateKeyResponse) {}
+//    rpc CryptoServiceRemoveKey(KeyIDMessage) returns (BasicResponse) {}
+    rpc CryptoServiceListKeys(RoleNameMessage) returns (KeyIDsListResponse) {}
+    rpc CryptoServiceListAllKeys(GunMessage) returns (SigningKeyIDsToRolesResponse) {}
+
+//    rpc SetLegacyVersions(VersionMessage) returns (google.protobuf.Empty) {}
+}
+
+message GunMessage {
+    string gun = 1;
+}
+
+message AddDelegationMessage {
+    string name = 1;
+    repeated PublicKey delegationKeys = 2;
+    repeated string paths = 3;
+    string gun = 4;
+}
+
+message AddDelegationRoleAndKeysMessage {
+    string name = 1;
+    repeated PublicKey delegationKeys = 2;
+    string gun = 3;
+}
+
+message AddDelegationPathsMessage {
+    string name = 1;
+    repeated string paths = 2;
+    string gun = 3;
+}
+
+message RemoveDelegationKeysAndPathsMessage {
+    string name = 1;
+    repeated string keyIDs = 2;
+    repeated string paths = 3;
+    string gun = 4;
+}
+
+message RemoveDelegationRoleMessage {
+    string name = 1;
+    string gun = 2;
+}
+
+message RemoveDelegationPathsMessage {
+    string name = 1;
+    repeated string paths = 2;
+    string gun = 3;
+}
+
+message RemoveDelegationKeysMessage {
+    string name = 1;
+    repeated string keyIDs = 2;
+    string gun = 3;
+}
+
+message RoleNameMessage {
+    string role = 1;
+    string gun = 2;
+}
+
+message RotateKeyMessage {
+    string role = 1;
+    bool serverManagesKey = 2;
+    repeated string keyList = 3;
+    string gun = 4;
+}
+
+// InitMessage holds a list of root key IDs and a list of roles for which
+// the server automatically should manage the keys
+message InitMessage {
+    repeated string rootKeyIDs = 1;
+    RoleNameList serverManagedRoles = 2;
+    string gun = 3;
+}
+
+// RoleNameList message holds a list of TUF role names
+message RoleNameList {
+    repeated string roles = 1;
+}
+
+message RoleNameListMessage {
+    repeated string roles = 1;
+    string gun = 2;
+}
+
+message RoleNameListResponse {
+    RoleNameList roleNameList = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message TargetNameMessage {
+    string name = 1;
+    string gun = 2;
+}
+
+// Target message describes a TUF target
+message Target {
+    string gun = 1;
+    string name = 2;
+    int64 length = 3;
+    map<string, bytes> hashes = 4;
+}
+
+// TargetWithRole represents a Target that exists in a particular role
+message TargetWithRole {
+    Target target = 1;
+    string role = 2;
+}
+
+message TargetWithRoleResponse {
+    TargetWithRole targetWithRole = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message TargetWithRoleNameList {
+    repeated TargetWithRole targets = 1;
+}
+
+message TargetWithRoleNameListResponse {
+    TargetWithRoleNameList targetWithRoleNameList = 1;
+    bool success = 2;
+}
+
+message TargetByNameAction {
+    string name = 1;
+    RoleNameList roles = 2;
+    string gun = 3;
+}
+
+message Signature {
+    string keyID = 1;
+    string method = 2;
+    bytes signature = 3;
+    bool isValid = 4;
+}
+
+message PublicKey {
+    string id = 1;
+    string algorithm = 2;
+    bytes public = 3;
+}
+
+message PublicKeyResponse {
+    PublicKey pubkey = 1;
+    bool success = 2;
+}
+
+message DelegationRole {
+    map<string, PublicKey> keys = 1;
+    string name = 2;
+    int32 threshold = 3;
+    repeated string paths = 4;
+}
+
+message TargetSigned {
+    DelegationRole role = 1;
+    Target target = 2;
+    repeated Signature signatures = 3;
+}
+
+message TargetSignedList {
+    repeated TargetSigned targets = 1;
+}
+
+message TargetSignedListResponse {
+    TargetSignedList targetSignedList = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+// BasicResponse describes a response with a true/false success indicator,
+// and if false, an error type and message. See the errors.go file in this
+// package for the possible errors and a translation function between the
+// BasicResponse object and a concrete error type.
+message BasicResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// Change describes a repository's change
+message Change {
+    string action = 1;
+    string scope = 2;
+    string type = 3;
+    string path = 4;
+    bytes content = 5;
+}
+
+// ChangeList describes a list of a repository's changes
+message ChangeList {
+    repeated Change changes = 1;
+}
+
+message ChangeListResponse {
+    ChangeList changelist = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message RootRole {
+    repeated string keyIDs = 1;
+    int32 threshold = 2;
+}
+
+message Role {
+    RootRole rootRole = 1;
+    string name = 2;
+    repeated string paths = 3;
+}
+
+message RoleList {
+    repeated Role roles = 1;
+}
+
+message RoleListResponse {
+    RoleList roleList = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message RoleWithSignatures {
+    repeated Signature signatures = 1;
+    Role role = 2;
+}
+
+message RoleWithSignaturesList {
+    repeated RoleWithSignatures roleWithSignatures = 1;
+}
+
+message RoleWithSignaturesListResponse {
+    RoleWithSignaturesList roleWithSignaturesList = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message CryptoServiceCreateMessage {
+    string roleName = 1;
+    string gun = 2;
+    string algorithm = 3;
+}
+
+message PrivateKey {
+    bytes pubKey = 1;
+    bytes privKey = 2;
+    string algorithm = 4;
+}
+
+message CryptoServiceAddKeyMessage {
+    string roleName = 1;
+    string gun = 2;
+    PrivateKey key = 3;
+}
+
+message PrivateKeyResponse {
+    string role = 1;
+    string gun = 2;
+    PrivateKey privkey = 3;
+    bool success = 4;
+    string message = 5;
+}
+
+message KeyIDMessage {
+    string keyID = 1;
+    string gun = 2;
+}
+
+message KeyIDsListResponse {
+    repeated string keyIDs = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+//message CryptoServicePrivateKeySignMessage {
+//    PublicKey pubkey = 1;
+//    bytes digest = 2;
+//    bytes privkey = 3;
+//    string gun = 4;
+//}
+
+//message SignatureResponse {
+//    bytes signature = 1;
+//    bool success = 2;
+//    string message = 3;
+//}
+
+message SigningKeyIDsToRolesResponse {
+    map<string, string> keyIDs = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+//message VersionMessage {
+//    int32 version = 1;
+//    string gun = 2;
+//}
+

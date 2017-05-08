@@ -1,0 +1,27 @@
+version: "2"
+services:
+  clientapi:
+    build:
+      context: .
+      dockerfile: clientapi.Dockerfile
+    depends_on:
+      - escrow
+    ports:
+      - "4449:4449"
+    networks:
+      esc:
+    entrypoint: clientapi
+    command: -config=./fixtures/clientapi-server-config.toml
+  escrow:
+    build:
+          context: .
+          dockerfile: escrow.Dockerfile
+    networks:
+      esc:
+        aliases:
+          - notaryescrow
+    entrypoint: escrow
+    command: -config=./fixtures/escrow-config-local.toml
+networks:
+  esc:
+    external: false

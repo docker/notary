@@ -1,0 +1,28 @@
+[server]
+grpc_addr = ":4449"
+tls_cert_file = "./clientapi-server.crt"
+tls_key_file = "./clientapi-server.key"
+
+[logging]
+level = "debug"
+
+[upstream]
+addr = "https://notary.docker.io"
+
+[key_storage]
+type = "remote"
+addr = "notaryescrow:4450"
+tls_ca_file = "./root-ca.crt"
+tls_cert_file = "./clientapi-server.crt"
+tls_key_file = "./clientapi-server.key"
+secret = "fixturesecret"
+
+[auth]
+type = "token"
+
+    [auth.options]
+    realm = "https://auth.docker.io/token"
+    service = "notary.docker.io"
+    issuer = "auth.docker.io"
+    rootcertbundle = "./tokencertbundle.pem"
+

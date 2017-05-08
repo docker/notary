@@ -1,0 +1,83 @@
+version: "2"
+services:
+  clientapi:
+    build:
+      context: .
+      dockerfile: clientapi.Dockerfile
+    depends_on:
+      - server
+    ports:
+      - "4449:4449"
+    networks:
+      api:
+      esc:
+    entrypoint: clientapi
+    command: -config=./fixtures/clientapi-server-config.toml
+  server:
+    build:
+          context: .
+          dockerfile: server.Dockerfile
+    networks:
+      mdb:
+      sig:
+      api:
+        aliases:
+          - notaryserver
+    ports:
+      - "8080"
+      - "4443:4443"
+    entrypoint: /usr/bin/env sh
+    command: -c "./migrations/migrate.sh && notary-server -config=./fixtures/server-config.json"
+    depends_on:
+      - mysql
+      - signer
+  signer:
+    build:
+          context: .
+          dockerfile: signer.Dockerfile
+    networks:
+      mdb:
+      sig:
+        aliases:
+          - notarysigner
+    ports:
+      - "7899:7899"
+    entrypoint: /usr/bin/env sh
+    command: -c "./migrations/migrate.sh && notary-signer -config=./fixtures/signer-config.json"
+    depends_on:
+      - mysql
+  escrow:
+    build:
+          context: .
+          dockerfile: escrow.Dockerfile
+    networks:
+      esc:
+        aliases:
+          - notaryescrow
+    entrypoint: escrow
+    command: -config=./fixtures/escrow-config-local.toml
+  mysql:
+    networks:
+      - mdb
+    volumes:
+      - ./notarysql/mysql-initdb.d:/docker-entrypoint-initdb.d
+      - notary_data:/var/lib/mysql
+    image: mariadb:10.1.10
+    environment:
+      - TERM=dumb
+      - MYSQL_ALLOW_EMPTY_PASSWORD="true"
+    command: mysqld --innodb_file_per_table
+volumes:
+  notary_data:
+    external: false
+  clientapi_data:
+    external: false
+networks:
+  mdb:
+    external: false
+  sig:
+    external: false
+  api:
+    external: false
+  esc:
+    external: false

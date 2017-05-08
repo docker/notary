@@ -217,10 +217,10 @@ func Test0Dot1RepoFormat(t *testing.T) {
 	require.Len(t, targets, 2)
 
 	// Also check that we can add/remove keys by rotating keys
-	oldTargetsKeys := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	oldTargetsKeys := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 	require.NoError(t, repo.RotateKey(data.CanonicalTargetsRole, false, nil))
 	require.NoError(t, repo.Publish())
-	newTargetsKeys := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	newTargetsKeys := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 
 	require.Len(t, oldTargetsKeys, 1)
 	require.Len(t, newTargetsKeys, 1)
@@ -281,10 +281,10 @@ func Test0Dot3RepoFormat(t *testing.T) {
 	require.Equal(t, data.RoleName("targets/releases"), delegations[0].Name)
 
 	// Also check that we can add/remove keys by rotating keys
-	oldTargetsKeys := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	oldTargetsKeys := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 	require.NoError(t, repo.RotateKey(data.CanonicalTargetsRole, false, nil))
 	require.NoError(t, repo.Publish())
-	newTargetsKeys := repo.CryptoService.ListKeys(data.CanonicalTargetsRole)
+	newTargetsKeys := repo.cryptoService.ListKeys(data.CanonicalTargetsRole)
 
 	require.Len(t, oldTargetsKeys, 1)
 	require.Len(t, newTargetsKeys, 1)

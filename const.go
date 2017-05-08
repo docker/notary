@@ -75,6 +75,17 @@ const (
 
 	// DefaultPageSize is the default number of records to return from the changefeed
 	DefaultPageSize = 100
+
+	// Supported auth types that will be found in a config's auth.type field
+
+	// AuthTypeToken indicates JWT based token auth. The following fields will be
+	// additionally required under auth.options:
+	// - realm: the url to the token issuing service at which tokens may be requested.
+	// - service: the name of the service requesting the token.
+	// - issuer: the name of the issuing service.
+	// - rootcertbundle: the absolute or relative (to the config file) path to a root ca
+	//                   that will sign the public cert associated with the token signer.
+	AuthTypeToken = "token"
 )
 
 // enum to use for setting and retrieving values from contexts

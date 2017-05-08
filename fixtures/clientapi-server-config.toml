@@ -1,0 +1,19 @@
+[server]
+grpc_addr = ":4449"
+tls_cert_file = "./clientapi-server.crt"
+tls_key_file = "./clientapi-server.key"
+
+[logging]
+level = "debug"
+
+[upstream]
+addr = "https://notaryserver:4443"
+tls_ca_file = "./root-ca.crt"
+
+[key_storage]
+type = "remote"
+addr = "notaryescrow:4450"
+tls_ca_file = "./root-ca.crt"
+tls_cert_file = "./clientapi-server.crt"
+tls_key_file = "./clientapi-server.key"
+secret = "fixturesecret"

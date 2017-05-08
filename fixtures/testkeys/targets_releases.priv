@@ -1,0 +1,9 @@
+-----BEGIN EC PRIVATE KEY-----
+Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-256-CBC,601e89562b2713552d762bbb4fc6cc3b
+role: targets/releases
+
+HCbJQOUTliNkPutqrP+kHa9JMz5xbTMpi0o6Xs2Mv/07LR9LoU0/Nnq1nv0L+mPh
+2sssRWJgrCbuOB0oMwkcckQaDK0NNvWn0kgzo0m83o7NepXWT2K5EwdYVhEyDAmA
+Jg1ix6St/MepLo6B7qi33zLMMaUd2ZsoTPz+xC9a4lU=
+-----END EC PRIVATE KEY-----

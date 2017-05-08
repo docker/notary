@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/docker/notary/passphrase"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,4 +52,21 @@ func TestFeedback(t *testing.T) {
 	content, err := ioutil.ReadFile(file.Name())
 	require.NoError(t, err)
 	require.Equal(t, "", string(content))
+}
+
+func TestParseKeysCerts(t *testing.T) {
+	privKeys, certs := parseKeysCerts(
+		passphrase.ConstantRetriever(testPassphrase),
+		[]string{
+			"../../fixtures/testkeys/targets_releases.priv",
+		},
+		[]string{
+			"../../fixtures/testkeys/targets_releases.pub",
+			"../../fixtures/testkeys/targets_qa.pub",
+		},
+	)
+	// we should match the target_releases pub and priv keys and
+	// end up with one entry in each map.
+	require.Len(t, privKeys, 1)
+	require.Len(t, certs, 1)
 }

@@ -1,23 +1,26 @@
 package main
 
 import (
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/docker/notary"
-	notaryclient "github.com/docker/notary/client"
 	"github.com/docker/notary/cryptoservice"
 	store "github.com/docker/notary/storage"
 	"github.com/docker/notary/trustmanager"
 	"github.com/docker/notary/tuf/data"
+	tufutils "github.com/docker/notary/tuf/utils"
 	"github.com/docker/notary/utils"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var cmdKeyTemplate = usageTemplate{
@@ -38,10 +41,17 @@ var cmdRotateKeyTemplate = usageTemplate{
 	Long:  `Generates a new key for the given Globally Unique Name and role (one of "snapshot", "targets", "root", or "timestamp").  If rotating to a server-managed key, a new key is requested from the server rather than generated.  If the generation or key request is successful, the key rotation is immediately published.  No other changes, even if they are staged, will be published.`,
 }
 
-var cmdKeyGenerateRootKeyTemplate = usageTemplate{
+var cmdKeyGenerateKeyTemplate = usageTemplate{
 	Use:   "generate [ algorithm ]",
-	Short: "Generates a new root key with a given algorithm.",
-	Long:  "Generates a new root key with a given algorithm. If hardware key storage (e.g. a Yubikey) is available, the key will be stored both on hardware and on disk (so that it can be backed up).  Please make sure to back up and then remove this on-key disk immediately afterwards.",
+	Short: "Generates a new key with a given algorithm.",
+	Long: "Generates a new key with a given algorithm. If hardware key " +
+		"storage (e.g. a Yubikey) is available, the key will be stored both " +
+		"on hardware and on disk (so that it can be backed up).  Please make " +
+		"sure to back up and then remove this on-key disk immediately" +
+		"afterwards. If a `--output` file name is provided, two files will " +
+		"be written, <output>.pub and <output>.priv, containing the public" +
+		"and private keys respectively (the key will not be stored in Notary's " +
+		"key storage). If no `--role` is provided, \"root\" will be assumed.",
 }
 
 var cmdKeyRemoveTemplate = usageTemplate{
@@ -80,17 +90,29 @@ type keyCommander struct {
 	legacyVersions         int
 	input                  io.Reader
 
-	keysImportRole string
-	keysImportGUN  string
-	exportGUNs     []string
-	exportKeyIDs   []string
-	outFile        string
+	importRole    string
+	generateRole  string
+	keysImportGUN string
+	exportGUNs    []string
+	exportKeyIDs  []string
+	outFile       string
 }
 
 func (k *keyCommander) GetCommand() *cobra.Command {
 	cmd := cmdKeyTemplate.ToCommand(nil)
 	cmd.AddCommand(cmdKeyListTemplate.ToCommand(k.keysList))
-	cmd.AddCommand(cmdKeyGenerateRootKeyTemplate.ToCommand(k.keysGenerateRootKey))
+	cmdGenerate := cmdKeyGenerateKeyTemplate.ToCommand(k.keysGenerate)
+	cmdGenerate.Flags().StringVarP(
+		&k.outFile,
+		"output",
+		"o",
+		"",
+		"Filepath to write export output to",
+	)
+	cmdGenerate.Flags().StringVarP(
+		&k.generateRole, "role", "r", "root", "Role to generate key with, defaulting to \"root\".",
+	)
+	cmd.AddCommand(cmdGenerate)
 	cmd.AddCommand(cmdKeyRemoveTemplate.ToCommand(k.keyRemove))
 	cmd.AddCommand(cmdKeyPasswdTemplate.ToCommand(k.keyPassphraseChange))
 	cmdRotateKey := cmdRotateKeyTemplate.ToCommand(k.keysRotate)
@@ -110,7 +132,7 @@ func (k *keyCommander) GetCommand() *cobra.Command {
 
 	cmdKeysImport := cmdKeyImportTemplate.ToCommand(k.importKeys)
 	cmdKeysImport.Flags().StringVarP(
-		&k.keysImportRole, "role", "r", "", "Role to import key with, if a role is not already given in a PEM header")
+		&k.importRole, "role", "r", "", "Role to import key with, if a role is not already given in a PEM header")
 	cmdKeysImport.Flags().StringVarP(
 		&k.keysImportGUN, "gun", "g", "", "Gun to import key with, if a gun is not already given in a PEM header")
 	cmd.AddCommand(cmdKeysImport)
@@ -159,7 +181,7 @@ func (k *keyCommander) keysList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (k *keyCommander) keysGenerateRootKey(cmd *cobra.Command, args []string) error {
+func (k *keyCommander) keysGenerate(cmd *cobra.Command, args []string) error {
 	// We require one or no arguments (since we have a default value), but if the
 	// user passes in more than one argument, we error out.
 	if len(args) > 1 {
@@ -189,19 +211,77 @@ func (k *keyCommander) keysGenerateRootKey(cmd *cobra.Command, args []string) er
 	if err != nil {
 		return err
 	}
-	ks, err := k.getKeyStores(config, true, true)
+
+	// if no outFile is provided, use the known key stores
+	if k.outFile == "" {
+		ks, err := k.getKeyStores(config, true, true)
+		if err != nil {
+			return err
+		}
+		cs := cryptoservice.NewCryptoService(ks...)
+
+		pubKey, err := cs.Create(data.RoleName(k.generateRole), "", algorithm)
+		if err != nil {
+			return fmt.Errorf("Failed to create a new root key: %v", err)
+		}
+
+		cmd.Printf("Generated new %s %s key with keyID: %s\n", algorithm, k.generateRole, pubKey.ID())
+		return nil
+	}
+
+	// if we had an outfile set, we'll write 2 files with the given name, appending .pub and .priv for the
+	// public and private keys respectively
+	return generateKeyToFile(k.generateRole, algorithm, k.getRetriever(), k.outFile)
+}
+
+func generateKeyToFile(role, algorithm string, retriever notary.PassRetriever, outFile string) error {
+	privKey, err := tufutils.GenerateKey(algorithm)
 	if err != nil {
 		return err
 	}
-	cs := cryptoservice.NewCryptoService(ks...)
+	pubKey := data.PublicKeyFromPrivate(privKey)
 
-	pubKey, err := cs.Create(data.CanonicalRootRole, "", algorithm)
-	if err != nil {
-		return fmt.Errorf("Failed to create a new root key: %v", err)
+	var (
+		chosenPassphrase string
+		giveup           bool
+		pemPrivKey       []byte
+	)
+	keyID := privKey.ID()
+	for attempts := 0; ; attempts++ {
+		chosenPassphrase, giveup, err = retriever(keyID, "", true, attempts)
+		if err == nil {
+			break
+		}
+		if giveup || attempts > 10 {
+			return trustmanager.ErrAttemptsExceeded{}
+		}
 	}
 
-	cmd.Printf("Generated new %s root key with keyID: %s\n", algorithm, pubKey.ID())
-	return nil
+	if chosenPassphrase != "" {
+		pemPrivKey, err = tufutils.EncryptPrivateKey(privKey, data.RoleName(role), "", chosenPassphrase)
+		if err != nil {
+			return err
+		}
+	} else {
+		return errors.New("no password provided")
+	}
+
+	privFile := strings.Join([]string{outFile, "priv"}, ".")
+	pubFile := strings.Join([]string{outFile, "pub"}, ".")
+
+	err = ioutil.WriteFile(privFile, pemPrivKey, notary.PrivNoExecPerms)
+	if err != nil {
+		return err
+	}
+
+	pubPEM := pem.Block{
+		Type: "PUBLIC KEY",
+		Headers: map[string]string{
+			"role": role,
+		},
+		Bytes: pubKey.Public(),
+	}
+	return ioutil.WriteFile(pubFile, pem.EncodeToMemory(&pubPEM), notary.PrivNoExecPerms)
 }
 
 func (k *keyCommander) keysRotate(cmd *cobra.Command, args []string) error {
@@ -218,19 +298,8 @@ func (k *keyCommander) keysRotate(cmd *cobra.Command, args []string) error {
 	gun := data.GUN(args[0])
 	rotateKeyRole := data.RoleName(args[1])
 
-	rt, err := getTransport(config, gun, admin)
-	if err != nil {
-		return err
-	}
-
-	trustPin, err := getTrustPinning(config)
-	if err != nil {
-		return err
-	}
-
-	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
-		config.GetString("trust_dir"), gun, getRemoteTrustServer(config),
-		rt, k.getRetriever(), trustPin)
+	fact := ConfigureRepo(config, k.getRetriever(), true)
+	nRepo, err := fact(gun)
 	if err != nil {
 		return err
 	}
@@ -242,7 +311,7 @@ func (k *keyCommander) keysRotate(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		err = nRepo.CryptoService.AddKey(rotateKeyRole, gun, privKey)
+		err = nRepo.CryptoService().AddKey(rotateKeyRole, gun, privKey)
 		if err != nil {
 			return fmt.Errorf("Error importing key: %v", err)
 		}
@@ -259,7 +328,7 @@ func (k *keyCommander) keysRotate(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 	}
-	nRepo.LegacyVersions = k.legacyVersions
+	nRepo.SetLegacyVersions(k.legacyVersions)
 	if err := nRepo.RotateKey(rotateKeyRole, k.rotateKeyServerManaged, keyList); err != nil {
 		return err
 	}
@@ -442,7 +511,7 @@ func (k *keyCommander) importKeys(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		defer from.Close()
-		if err = utils.ImportKeys(from, importers, k.keysImportRole, k.keysImportGUN, k.getRetriever()); err != nil {
+		if err = utils.ImportKeys(from, importers, k.importRole, k.keysImportGUN, k.getRetriever()); err != nil {
 			return err
 		}
 	}

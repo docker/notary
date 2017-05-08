@@ -1,0 +1,57 @@
+[clientapi_server]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:FALSE
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, digitalSignature, keyEncipherment
+subjectAltName = DNS:clientapi-server, DNS:localhost, IP:127.0.0.1
+subjectKeyIdentifier=hash
+
+[selfsigned]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage=codeSigning
+subjectKeyIdentifier=hash
+
+[secure.example.com]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:FALSE
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, digitalSignature, keyEncipherment
+subjectAltName = DNS:secure.example.com, DNS:localhost, IP:127.0.0.1
+subjectKeyIdentifier=hash
+
+[notary_signer]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:FALSE
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, digitalSignature, keyEncipherment
+subjectAltName = DNS:notary-signer, DNS:notarysigner, DNS:localhost, IP:127.0.0.1
+subjectKeyIdentifier=hash
+
+[notary_escrow]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:FALSE
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, digitalSignature, keyEncipherment
+subjectAltName = DNS:notary-escrow, DNS:notaryescrow, DNS:localhost, IP:127.0.0.1
+subjectKeyIdentifier=hash
+
+[notary_server]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:FALSE
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, digitalSignature, keyEncipherment
+subjectAltName = DNS:notary-server, DNS:notaryserver, DNS:localhost, IP:127.0.0.1
+subjectKeyIdentifier=hash
+
+[intermediate_ca]
+authorityKeyIdentifier=keyid,issuer
+basicConstraints = critical,CA:TRUE,pathlen:0
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage = critical, nonRepudiation, cRLSign, keyCertSign
+subjectKeyIdentifier=hash
+
+[root_ca]
+basicConstraints = critical,CA:TRUE,pathlen:1
+keyUsage = critical, nonRepudiation, cRLSign, keyCertSign
+subjectKeyIdentifier=hash
