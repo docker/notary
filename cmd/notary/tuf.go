@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -20,6 +21,9 @@ import (
 	"github.com/docker/distribution/registry/client/transport"
 	"github.com/docker/go-connections/tlsconfig"
 	canonicaljson "github.com/docker/go/canonical/json"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/docker/notary"
 	notaryclient "github.com/docker/notary/client"
 	"github.com/docker/notary/cryptoservice"
@@ -29,8 +33,6 @@ import (
 	"github.com/docker/notary/tuf/data"
 	tufutils "github.com/docker/notary/tuf/utils"
 	"github.com/docker/notary/utils"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var cmdTUFListTemplate = usageTemplate{
@@ -42,13 +44,21 @@ var cmdTUFListTemplate = usageTemplate{
 var cmdTUFAddTemplate = usageTemplate{
 	Use:   "add [ GUN ] <target> <file>",
 	Short: "Adds the file as a target to the trusted collection.",
-	Long:  "Adds the file as a target to the local trusted collection identified by the Globally Unique Name. This is an offline operation.  Please then use `publish` to push the changes to the remote trusted collection.",
+	Long: "Adds the file as a target to the local trusted collection identified by the Globally Unique Name. This is an " +
+		"offline operation.  Please then use `publish` to push the changes to the remote trusted collection. " +
+		"If the --input flag is provided with a path to a syntactically valid targets or delegation file, the provided target " +
+		"information will be added to that file instead, and the file will be re-signed with keys matching the IDs of existing " +
+		"signatures. If --input is used, a --output file path must also be provided.",
 }
 
 var cmdTUFAddHashTemplate = usageTemplate{
 	Use:   "addhash [ GUN ] <target> <byte size> <hashes>",
 	Short: "Adds the byte size and hash(es) as a target to the trusted collection.",
-	Long:  "Adds the specified byte size and hash(es) as a target to the local trusted collection identified by the Globally Unique Name. This is an offline operation.  Please then use `publish` to push the changes to the remote trusted collection.",
+	Long: "Adds the specified byte size and hash(es) as a target to the local trusted collection identified by the Globally Unique Name. This is an offline operation.  " +
+		"Please then use `publish` to push the changes to the remote trusted collection." +
+		"If the --input flag is provided with a path to a syntactically valid targets or delegation file, the provided target " +
+		"information will be added to that file instead, and the file will be re-signed with keys matching the IDs of existing " +
+		"signatures. If --input is used, a --output file path must also be provided.",
 }
 
 var cmdTUFRemoveTemplate = usageTemplate{
@@ -111,11 +121,13 @@ type tufCommander struct {
 	retriever    notary.PassRetriever
 
 	// these are for command line parsing - no need to set
-	roles   []string
-	sha256  string
-	sha512  string
-	rootKey string
-	custom  string
+	roles        []string
+	sha256       string
+	sha512       string
+	rootKey      string
+	custom       string
+	privKeyPaths []string
+	certPaths    []string
 
 	input  string
 	output string
@@ -154,8 +166,12 @@ func (t *tufCommander) AddToCommand(cmd *cobra.Command) {
 
 	cmdTUFAdd := cmdTUFAddTemplate.ToCommand(t.tufAdd)
 	cmdTUFAdd.Flags().StringSliceVarP(&t.roles, "roles", "r", nil, "Delegation roles to add this target to")
+	cmdTUFAdd.Flags().StringVarP(&t.input, "input", "i", "", "Specify an input targets or delegation file to add the target to")
+	cmdTUFAdd.Flags().StringVarP(&t.output, "output", "o", "", "File to output result to. Only used in tandem with --input.")
 	cmdTUFAdd.Flags().BoolVarP(&t.autoPublish, "publish", "p", false, htAutoPublish)
 	cmdTUFAdd.Flags().StringVar(&t.custom, "custom", "", "Path to the file containing custom data for this target")
+	cmdTUFAdd.Flags().StringSliceVar(&t.privKeyPaths, "keys", nil, "Private keys to sign with. Only valid if used with the --file flag")
+	cmdTUFAdd.Flags().StringSliceVar(&t.certPaths, "certs", nil, "Public certificates that match private keys found in the --keys flag, or are in the notary key storage. Only valid if used with the --file flag")
 	cmd.AddCommand(cmdTUFAdd)
 
 	cmdTUFRemove := cmdTUFRemoveTemplate.ToCommand(t.tufRemove)
@@ -165,6 +181,10 @@ func (t *tufCommander) AddToCommand(cmd *cobra.Command) {
 
 	cmdTUFAddHash := cmdTUFAddHashTemplate.ToCommand(t.tufAddByHash)
 	cmdTUFAddHash.Flags().StringSliceVarP(&t.roles, "roles", "r", nil, "Delegation roles to add this target to")
+	cmdTUFAddHash.Flags().StringVarP(&t.input, "input", "i", "", "Specify an input targets or delegation file to add the target to")
+	cmdTUFAddHash.Flags().StringVarP(&t.output, "output", "o", "", "File to output result to. Only used in tandem with --input.")
+	cmdTUFAddHash.Flags().StringSliceVar(&t.privKeyPaths, "keys", nil, "Private keys to sign with. Only valid if used with the --file flag")
+	cmdTUFAddHash.Flags().StringSliceVar(&t.certPaths, "certs", nil, "Public certificates that match private keys found in the --keys flag, or are in the notary key storage. Only valid if used with the --file flag")
 	cmdTUFAddHash.Flags().StringVar(&t.sha256, notary.SHA256, "", "hex encoded sha256 of the target to add")
 	cmdTUFAddHash.Flags().StringVar(&t.sha512, notary.SHA512, "", "hex encoded sha512 of the target to add")
 	cmdTUFAddHash.Flags().BoolVarP(&t.autoPublish, "publish", "p", false, htAutoPublish)
@@ -253,6 +273,9 @@ func getTargetHashes(t *tufCommander) (data.Hashes, error) {
 
 // Open and read a file containing the targetCustom data
 func getTargetCustom(targetCustomFilename string) (*canonicaljson.RawMessage, error) {
+	if targetCustomFilename == "" {
+		return nil, nil
+	}
 	targetCustom := new(canonicaljson.RawMessage)
 	rawTargetCustom, err := ioutil.ReadFile(targetCustomFilename)
 	if err != nil {
@@ -268,27 +291,57 @@ func getTargetCustom(targetCustomFilename string) (*canonicaljson.RawMessage, er
 func (t *tufCommander) tufAddByHash(cmd *cobra.Command, args []string) error {
 	if len(args) < 3 || t.sha256 == "" && t.sha512 == "" {
 		cmd.Usage()
-		return fmt.Errorf("Must specify a GUN, target, byte size of target data, and at least one hash")
+		return errors.New("Must specify a GUN, target, byte size of target data, and at least one hash")
 	}
 	config, err := t.configGetter()
 	if err != nil {
 		return err
 	}
 
-	gun := data.GUN(args[0])
-	targetName := args[1]
-	targetSize := args[2]
-	var targetCustom *canonicaljson.RawMessage
-	if t.custom != "" {
-		targetCustom, err = getTargetCustom(t.custom)
-		if err != nil {
-			return err
-		}
+	var (
+		gun          = data.GUN(args[0])
+		targetName   = args[1]
+		targetSize   = args[2]
+		targetCustom *canonicaljson.RawMessage
+	)
+
+	targetCustom, err = getTargetCustom(t.custom)
+	if err != nil {
+		return err
 	}
 
 	targetInt64Len, err := strconv.ParseInt(targetSize, 0, 64)
 	if err != nil {
 		return err
+	}
+
+	targetHashes, err := getTargetHashes(t)
+	if err != nil {
+		return err
+	}
+
+	// Manually construct the target with the given byte size and hashes
+	target := &notaryclient.Target{Name: targetName, Hashes: targetHashes, Length: targetInt64Len, Custom: targetCustom}
+
+	if t.input != "" {
+		if t.output == "" {
+			return errors.New("you must provide an --output file when using an --input file")
+		}
+		fd, err := os.OpenFile(t.output, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			return err
+		}
+		defer fd.Close()
+		privKeys, pubKeys := parseKeysCerts(t.retriever, t.privKeyPaths, t.certPaths)
+		return notaryclient.AddTargetToFile(
+			config.GetString("trust_dir"),
+			t.retriever,
+			fd,
+			t.input,
+			target,
+			privKeys,
+			pubKeys,
+		)
 	}
 
 	trustPin, err := getTrustPinning(config)
@@ -303,14 +356,6 @@ func (t *tufCommander) tufAddByHash(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	targetHashes, err := getTargetHashes(t)
-	if err != nil {
-		return err
-	}
-
-	// Manually construct the target with the given byte size and hashes
-	target := &notaryclient.Target{Name: targetName, Hashes: targetHashes, Length: targetInt64Len, Custom: targetCustom}
 
 	roleNames := data.NewRoleList(t.roles)
 
@@ -357,6 +402,32 @@ func (t *tufCommander) tufAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	target, err := notaryclient.NewTarget(targetName, targetPath, targetCustom)
+	if err != nil {
+		return err
+	}
+
+	if t.input != "" {
+		if t.output == "" {
+			return errors.New("you must provide an --output file when using an --input file")
+		}
+		fd, err := os.OpenFile(t.output, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			return err
+		}
+		defer fd.Close()
+		privKeys, pubKeys := parseKeysCerts(t.retriever, t.privKeyPaths, t.certPaths)
+		return notaryclient.AddTargetToFile(
+			config.GetString("trust_dir"),
+			t.retriever,
+			fd,
+			t.input,
+			target,
+			privKeys,
+			pubKeys,
+		)
+	}
+
 	// no online operations are performed by add so the transport argument
 	// should be nil
 	nRepo, err := notaryclient.NewFileCachedNotaryRepository(
@@ -365,10 +436,6 @@ func (t *tufCommander) tufAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	target, err := notaryclient.NewTarget(targetName, targetPath, targetCustom)
-	if err != nil {
-		return err
-	}
 	// If roles is empty, we default to adding to targets
 	if err = nRepo.AddTarget(target, data.NewRoleList(t.roles)...); err != nil {
 		return err

@@ -2,6 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/Sirupsen/logrus"
+	"github.com/docker/notary"
+	"github.com/docker/notary/trustmanager"
+	"github.com/docker/notary/tuf/data"
+	"github.com/docker/notary/tuf/utils"
 	"io/ioutil"
 	"os"
 )
@@ -51,4 +56,50 @@ func feedback(t *tufCommander, payload []byte) error {
 
 	os.Stdout.Write(payload)
 	return nil
+}
+
+func parseKeysCerts(retriever notary.PassRetriever, privKeys []string, certs []string) (map[string]data.PrivateKey, map[string]data.PublicKey) {
+	privateKeys := make(map[string]data.PrivateKey)
+	idMap := make(map[string]data.PublicKey)
+	for _, fp := range certs {
+		byt, err := ioutil.ReadFile(fp)
+		if err != nil {
+			logrus.Errorf("could not read file at %s", fp)
+			continue
+		}
+		pubKey, err := utils.ParsePEMPublicKey(byt)
+		if err != nil {
+			logrus.Errorf("could not parse key found in file %s, received error: %s", fp, err.Error())
+			continue
+		}
+		canonicalID, err := utils.CanonicalKeyID(pubKey)
+		if err != nil {
+			logrus.Errorf("could not generate canonical ID for key found in file %s, received error: %s", fp, err.Error())
+			continue
+		}
+		idMap[canonicalID] = pubKey
+	}
+
+	for _, fp := range privKeys {
+		byt, err := ioutil.ReadFile(fp)
+		if err != nil {
+			logrus.Errorf("could not read file at %s", fp)
+			continue
+		}
+		privKey, _, err := trustmanager.GetPasswdDecryptBytes(retriever, byt, "", fp)
+		if err != nil {
+			logrus.Errorf("could not parse key found in file %s, received error: %s", fp, err.Error())
+			continue
+		}
+		if pubKey, ok := idMap[privKey.ID()]; ok {
+			// if we have a matching public key, use the non-canonical ID
+			privateKeys[pubKey.ID()] = privKey
+			// we found the key, remove it from the map
+			delete(idMap, pubKey.ID())
+		} else {
+			privateKeys[privKey.ID()] = privKey
+		}
+	}
+
+	return privateKeys, idMap
 }
