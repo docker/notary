@@ -17,11 +17,15 @@ type StoredTUFMeta struct {
 	SHA256  string
 	Data    []byte
 	Version int
+	Channel *Channel
 }
 
-func SampleCustomTUFObj(gun data.GUN, role data.RoleName, version int, tufdata []byte) StoredTUFMeta {
+func SampleCustomTUFObj(gun data.GUN, role data.RoleName, version int, tufdata []byte, channel *Channel) StoredTUFMeta {
+	if channel == nil {
+		channel = &Published
+	}
 	if tufdata == nil {
-		tufdata = []byte(fmt.Sprintf("%s_%s_%d", gun, role, version))
+		tufdata = []byte(fmt.Sprintf("%s_%s_%d_%s", gun, role, version, channel.Name))
 	}
 	checksum := sha256.Sum256(tufdata)
 	hexChecksum := hex.EncodeToString(checksum[:])
@@ -31,14 +35,16 @@ func SampleCustomTUFObj(gun data.GUN, role data.RoleName, version int, tufdata [
 		Version: version,
 		SHA256:  hexChecksum,
 		Data:    tufdata,
+		Channel: channel,
 	}
 }
 
 func MakeUpdate(tufObj StoredTUFMeta) MetaUpdate {
 	return MetaUpdate{
-		Role:    tufObj.Role,
-		Version: tufObj.Version,
-		Data:    tufObj.Data,
+		Role:     tufObj.Role,
+		Version:  tufObj.Version,
+		Data:     tufObj.Data,
+		Channels: []*Channel{tufObj.Channel},
 	}
 }
 
@@ -46,7 +52,7 @@ func assertExpectedTUFMetaInStore(t *testing.T, s MetaStore, expected []StoredTU
 	for _, tufObj := range expected {
 		var prevTime *time.Time
 		if current {
-			cDate, tufdata, err := s.GetCurrent(tufObj.Gun, tufObj.Role)
+			cDate, tufdata, err := s.GetCurrent(tufObj.Gun, tufObj.Role, tufObj.Channel)
 			require.NoError(t, err)
 			require.Equal(t, tufObj.Data, tufdata)
 
@@ -59,7 +65,7 @@ func assertExpectedTUFMetaInStore(t *testing.T, s MetaStore, expected []StoredTU
 		checksumBytes := sha256.Sum256(tufObj.Data)
 		checksum := hex.EncodeToString(checksumBytes[:])
 
-		cDate, tufdata, err := s.GetChecksum(tufObj.Gun, tufObj.Role, checksum)
+		cDate, tufdata, err := s.GetChecksum(tufObj.Gun, tufObj.Role, checksum, tufObj.Channel)
 		require.NoError(t, err)
 		require.Equal(t, tufObj.Data, tufdata)
 
@@ -80,9 +86,31 @@ func testUpdateCurrentEmptyStore(t *testing.T, s MetaStore) []StoredTUFMeta {
 	for _, role := range append(data.BaseRoles, "targets/a") {
 		for _, gun := range []data.GUN{"gun1", "gun2"} {
 			// Adding a new TUF file should succeed
-			tufObj := SampleCustomTUFObj(gun, role, 1, nil)
+			tufObj := SampleCustomTUFObj(gun, role, 1, nil, &Published)
 			require.NoError(t, s.UpdateCurrent(tufObj.Gun, MakeUpdate(tufObj)))
 			expected = append(expected, tufObj)
+		}
+	}
+
+	assertExpectedTUFMetaInStore(t, s, expected, true)
+	return expected
+}
+
+// UpdateCurrent should assign channels to metadata correctly
+func testUpdateCurrentInChannel(t *testing.T, s MetaStore) []StoredTUFMeta {
+	expected := make([]StoredTUFMeta, 0, 20)
+
+	for _, role := range append(data.BaseRoles, "targets/a") {
+		for _, gun := range []data.GUN{"gun1", "gun2"} {
+			// Adding a new TUF file should succeed
+			tufObj := SampleCustomTUFObj(gun, role, 1, nil, &Published)
+			require.NoError(t, s.UpdateCurrent(tufObj.Gun, MakeUpdate(tufObj)))
+			expected = append(expected, tufObj)
+
+			// Adding a new TUF file should succeed
+			tufObjNs := SampleCustomTUFObj(gun, role, 1, nil, &Staged)
+			require.NoError(t, s.UpdateCurrent(tufObjNs.Gun, MakeUpdate(tufObjNs)))
+			expected = append(expected, tufObjNs)
 		}
 	}
 
@@ -97,9 +125,9 @@ func testUpdateCurrentVersionCheck(t *testing.T, s MetaStore, oldVersionExists b
 	role, gun := data.CanonicalRootRole, data.GUN("testGUN")
 
 	expected := []StoredTUFMeta{
-		SampleCustomTUFObj(gun, role, 1, nil),
-		SampleCustomTUFObj(gun, role, 2, nil),
-		SampleCustomTUFObj(gun, role, 4, nil),
+		SampleCustomTUFObj(gun, role, 1, nil, &Published),
+		SampleCustomTUFObj(gun, role, 2, nil, &Published),
+		SampleCustomTUFObj(gun, role, 4, nil, &Published),
 	}
 
 	// starting meta is version 1
@@ -115,7 +143,7 @@ func testUpdateCurrentVersionCheck(t *testing.T, s MetaStore, oldVersionExists b
 		version = 4
 	}
 
-	tufObj := SampleCustomTUFObj(gun, role, version, nil)
+	tufObj := SampleCustomTUFObj(gun, role, version, nil, &Published)
 	err := s.UpdateCurrent(gun, MakeUpdate(tufObj))
 	require.Error(t, err, "Error should not be nil")
 	require.IsType(t, ErrOldVersion{}, err,
@@ -132,7 +160,7 @@ func testGetVersion(t *testing.T, s MetaStore) {
 	_, _, err := s.GetVersion("gun", "role", 2)
 	require.IsType(t, ErrNotFound{}, err, "Expected error to be ErrNotFound")
 
-	s.UpdateCurrent("gun", MetaUpdate{"role", 2, []byte("version2")})
+	s.UpdateCurrent("gun", MetaUpdate{"role", 2, []byte("version2"), nil})
 	_, d, err := s.GetVersion("gun", "role", 2)
 	require.Nil(t, err, "Expected error to be nil")
 	require.Equal(t, []byte("version2"), d, "Data was incorrect")
@@ -153,7 +181,7 @@ func testUpdateManyNoConflicts(t *testing.T, s MetaStore) []StoredTUFMeta {
 	firstBatch := make([]StoredTUFMeta, 4)
 	updates := make([]MetaUpdate, 4)
 	for i, role := range data.BaseRoles {
-		firstBatch[i] = SampleCustomTUFObj(gun, role, 1, nil)
+		firstBatch[i] = SampleCustomTUFObj(gun, role, 1, nil, &Published)
 		updates[i] = MakeUpdate(firstBatch[i])
 	}
 
@@ -163,7 +191,7 @@ func testUpdateManyNoConflicts(t *testing.T, s MetaStore) []StoredTUFMeta {
 	secondBatch := make([]StoredTUFMeta, 4)
 	// no conflicts with what's in DB or with itself
 	for i, role := range data.BaseRoles {
-		secondBatch[i] = SampleCustomTUFObj(gun, role, 2, nil)
+		secondBatch[i] = SampleCustomTUFObj(gun, role, 2, nil, &Published)
 		updates[i] = MakeUpdate(secondBatch[i])
 	}
 
@@ -178,7 +206,7 @@ func testUpdateManyNoConflicts(t *testing.T, s MetaStore) []StoredTUFMeta {
 	role := data.CanonicalRootRole
 	updates = updates[:2]
 	for i, version := range []int{4, 3} {
-		thirdBatch[i] = SampleCustomTUFObj(gun, role, version, nil)
+		thirdBatch[i] = SampleCustomTUFObj(gun, role, version, nil, &Published)
 		updates[i] = MakeUpdate(thirdBatch[i])
 	}
 
@@ -199,7 +227,7 @@ func testUpdateManyConflictRollback(t *testing.T, s MetaStore) []StoredTUFMeta {
 	successBatch := make([]StoredTUFMeta, 4)
 	updates := make([]MetaUpdate, 4)
 	for i, role := range data.BaseRoles {
-		successBatch[i] = SampleCustomTUFObj(gun, role, 1, nil)
+		successBatch[i] = SampleCustomTUFObj(gun, role, 1, nil, &Published)
 		updates[i] = MakeUpdate(successBatch[i])
 	}
 
@@ -218,7 +246,7 @@ func testUpdateManyConflictRollback(t *testing.T, s MetaStore) []StoredTUFMeta {
 			version = 1
 		}
 		tufdata := []byte(fmt.Sprintf("%s_%s_%d_bad", gun, role, version))
-		badBatch[i] = SampleCustomTUFObj(gun, role, version, tufdata)
+		badBatch[i] = SampleCustomTUFObj(gun, role, version, tufdata, &Published)
 		updates[i] = MakeUpdate(badBatch[i])
 	}
 
@@ -234,7 +262,7 @@ func testUpdateManyConflictRollback(t *testing.T, s MetaStore) []StoredTUFMeta {
 	require.IsType(t, ErrOldVersion{}, err)
 
 	// self-conflicting, in that it's a duplicate, but otherwise no DB conflicts
-	duplicate := SampleCustomTUFObj(gun, data.CanonicalTimestampRole, 3, []byte("duplicate"))
+	duplicate := SampleCustomTUFObj(gun, data.CanonicalTimestampRole, 3, []byte("duplicate"), &Published)
 	duplicateUpdate := MakeUpdate(duplicate)
 	err = s.UpdateMany(gun, []MetaUpdate{duplicateUpdate, duplicateUpdate})
 	require.Error(t, err)
@@ -265,7 +293,7 @@ func testDeleteSuccess(t *testing.T, s MetaStore) {
 	updates := make([]MetaUpdate, 0, 10)
 	for version := 1; version < 3; version++ {
 		for _, role := range append(data.BaseRoles, "targets/a") {
-			tufObj := SampleCustomTUFObj(gun, role, version, nil)
+			tufObj := SampleCustomTUFObj(gun, role, version, nil, &Published)
 			unexpected = append(unexpected, tufObj)
 			updates = append(updates, MakeUpdate(tufObj))
 		}

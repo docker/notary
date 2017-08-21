@@ -21,6 +21,7 @@ type key struct {
 type ver struct {
 	version      int
 	data         []byte
+	channels     []*Channel
 	createupdate time.Time
 }
 
@@ -55,28 +56,36 @@ func NewMemStorage() *MemStorage {
 
 // UpdateCurrent updates the meta data for a specific role
 func (st *MemStorage) UpdateCurrent(gun data.GUN, update MetaUpdate) error {
-	id := entryKey(gun, update.Role)
 	st.lock.Lock()
 	defer st.lock.Unlock()
-	if space, ok := st.tufMeta[id]; ok {
-		for _, v := range space {
-			if v.version >= update.Version {
-				return ErrOldVersion{}
+
+	setDefaultChannels(&update)
+
+	for _, channel := range update.Channels {
+		id := entryKey(gun, update.Role, channel)
+
+		if space, ok := st.tufMeta[id]; ok {
+			for _, v := range space {
+				if v.version >= update.Version {
+					return ErrOldVersion{}
+				}
 			}
 		}
-	}
-	version := ver{version: update.Version, data: update.Data, createupdate: time.Now()}
-	st.tufMeta[id] = append(st.tufMeta[id], version)
-	checksumBytes := sha256.Sum256(update.Data)
-	checksum := hex.EncodeToString(checksumBytes[:])
 
-	_, ok := st.checksums[gun.String()]
-	if !ok {
-		st.checksums[gun.String()] = make(map[string]ver)
-	}
-	st.checksums[gun.String()][checksum] = version
-	if update.Role == data.CanonicalTimestampRole {
-		st.writeChange(gun, update.Version, checksum)
+		version := ver{version: update.Version, data: update.Data, createupdate: time.Now(), channels: update.Channels}
+		st.tufMeta[id] = append(st.tufMeta[id], version)
+		checksumBytes := sha256.Sum256(update.Data)
+		checksum := hex.EncodeToString(checksumBytes[:])
+
+		cid := checksumKey(gun)
+		_, ok := st.checksums[cid]
+		if !ok {
+			st.checksums[cid] = make(map[string]ver)
+		}
+		st.checksums[cid][checksum] = version
+		if update.Role == data.CanonicalTimestampRole && IsPublished(update.Channels) {
+			st.writeChange(gun, update.Version, checksum)
+		}
 	}
 	return nil
 }
@@ -103,81 +112,131 @@ func (st *MemStorage) UpdateMany(gun data.GUN, updates []MetaUpdate) error {
 	versioner := make(map[string]map[int]struct{})
 	constant := struct{}{}
 
-	// ensure that we only update in one transaction
 	for _, u := range updates {
-		id := entryKey(gun, u.Role)
+		setDefaultChannels(&u)
+		for _, c := range u.Channels {
+			id := entryKey(gun, u.Role, c)
+			roleChannel := fmt.Sprintf("%s.%s", u.Role.String(), c.Name)
 
-		// prevent duplicate versions of the same role
-		if _, ok := versioner[u.Role.String()][u.Version]; ok {
-			return ErrOldVersion{}
-		}
-		if _, ok := versioner[u.Role.String()]; !ok {
-			versioner[u.Role.String()] = make(map[int]struct{})
-		}
-		versioner[u.Role.String()][u.Version] = constant
+			// prevent duplicate versions of the same role
+			if _, ok := versioner[roleChannel][u.Version]; ok {
+				return ErrOldVersion{}
+			}
+			if _, ok := versioner[roleChannel]; !ok {
+				versioner[roleChannel] = make(map[int]struct{})
+			}
+			versioner[roleChannel][u.Version] = constant
 
-		if space, ok := st.tufMeta[id]; ok {
-			for _, v := range space {
-				if v.version >= u.Version {
-					return ErrOldVersion{}
+			if space, ok := st.tufMeta[id]; ok {
+				for _, v := range space {
+					if v.version >= u.Version {
+						return ErrOldVersion{}
+					}
+
 				}
 			}
 		}
 	}
-
 	for _, u := range updates {
-		id := entryKey(gun, u.Role)
+		setDefaultChannels(&u)
+		for _, channel := range u.Channels {
+			id := entryKey(gun, u.Role, channel)
+			cid := checksumKey(gun)
+			version := ver{version: u.Version, data: u.Data, createupdate: time.Now(), channels: u.Channels}
+			st.tufMeta[id] = append(st.tufMeta[id], version)
+			sort.Sort(st.tufMeta[id]) // ensure that it's sorted
+			checksumBytes := sha256.Sum256(u.Data)
+			checksum := hex.EncodeToString(checksumBytes[:])
 
-		version := ver{version: u.Version, data: u.Data, createupdate: time.Now()}
-		st.tufMeta[id] = append(st.tufMeta[id], version)
-		sort.Sort(st.tufMeta[id]) // ensure that it's sorted
-		checksumBytes := sha256.Sum256(u.Data)
-		checksum := hex.EncodeToString(checksumBytes[:])
-
-		_, ok := st.checksums[gun.String()]
-		if !ok {
-			st.checksums[gun.String()] = make(map[string]ver)
-		}
-		st.checksums[gun.String()][checksum] = version
-		if u.Role == data.CanonicalTimestampRole {
-			st.writeChange(gun, u.Version, checksum)
+			_, ok := st.checksums[cid]
+			if !ok {
+				st.checksums[cid] = make(map[string]ver)
+			}
+			st.checksums[cid][checksum] = version
+			if u.Role == data.CanonicalTimestampRole && IsPublished(u.Channels) {
+				st.writeChange(gun, u.Version, checksum)
+			}
 		}
 	}
 	return nil
 }
 
 // GetCurrent returns the createupdate date metadata for a given role, under a GUN.
-func (st *MemStorage) GetCurrent(gun data.GUN, role data.RoleName) (*time.Time, []byte, error) {
-	id := entryKey(gun, role)
+func (st *MemStorage) GetCurrent(gun data.GUN, role data.RoleName, channels ...*Channel) (*time.Time, []byte, error) {
 	st.lock.Lock()
 	defer st.lock.Unlock()
-	space, ok := st.tufMeta[id]
-	if !ok || len(space) == 0 {
-		return nil, nil, ErrNotFound{}
+
+	if len(channels) == 0 {
+		channels = []*Channel{&Published}
 	}
-	return &(space[len(space)-1].createupdate), space[len(space)-1].data, nil
+
+	var currentVersion ver
+	latestVersionNumber := -1
+	for _, channel := range channels {
+		id := entryKey(gun, role, channel)
+		foundCurrent, ok := st.tufMeta[id]
+		if !ok || len(foundCurrent) == 0 {
+			return nil, nil, ErrNotFound{}
+		}
+		currentVersion = foundCurrent[len(foundCurrent)-1]
+
+		// If version doesn't exist in requested channel, return error
+		if !InChannel(currentVersion.channels, *channel) {
+			return nil, nil, ErrNotFound{}
+		}
+
+		if latestVersionNumber == -1 {
+			latestVersionNumber = currentVersion.version
+		}
+		// if versions are different in requested channels, return error
+		if latestVersionNumber != currentVersion.version {
+			return nil, nil, ErrNotFound{}
+		}
+	}
+
+	return &(currentVersion.createupdate), currentVersion.data, nil
 }
 
 // GetChecksum returns the createupdate date and metadata for a given role, under a GUN.
-func (st *MemStorage) GetChecksum(gun data.GUN, role data.RoleName, checksum string) (*time.Time, []byte, error) {
+func (st *MemStorage) GetChecksum(gun data.GUN, role data.RoleName, checksum string, channels ...*Channel) (*time.Time, []byte, error) {
 	st.lock.Lock()
 	defer st.lock.Unlock()
-	space, ok := st.checksums[gun.String()][checksum]
-	if !ok || len(space.data) == 0 {
-		return nil, nil, ErrNotFound{}
+
+	if len(channels) == 0 {
+		channels = []*Channel{&Published}
 	}
-	return &(space.createupdate), space.data, nil
+
+	for _, channel := range channels {
+		ver, ok := st.checksums[checksumKey(gun)][checksum]
+		if !ok || len(ver.data) == 0 {
+			continue
+		}
+		if InChannel(ver.channels, *channel) {
+			return &(ver.createupdate), ver.data, nil
+		}
+	}
+	return nil, nil, ErrNotFound{}
 }
 
 // GetVersion gets a specific TUF record by its version
-func (st *MemStorage) GetVersion(gun data.GUN, role data.RoleName, version int) (*time.Time, []byte, error) {
+func (st *MemStorage) GetVersion(gun data.GUN, role data.RoleName, version int, channels ...*Channel) (*time.Time, []byte, error) {
 	st.lock.Lock()
 	defer st.lock.Unlock()
 
-	id := entryKey(gun, role)
-	for _, ver := range st.tufMeta[id] {
-		if ver.version == version {
-			return &(ver.createupdate), ver.data, nil
+	if len(channels) == 0 {
+		channels = []*Channel{&Published}
+	}
+
+	for _, channel := range channels {
+		id := entryKey(gun, role, channel)
+		versions, ok := st.tufMeta[id]
+		if !ok || len(versions) == 0 {
+			continue
+		}
+		for _, ver := range versions {
+			if ver.version == version && InChannel(ver.channels, *channel) {
+				return &(ver.createupdate), ver.data, nil
+			}
 		}
 	}
 
@@ -198,7 +257,13 @@ func (st *MemStorage) Delete(gun data.GUN) error {
 		// we didn't delete anything, don't write change.
 		return nil
 	}
-	delete(st.checksums, gun.String())
+
+	for k := range st.checksums {
+		if strings.HasPrefix(k, gun.String()) {
+			delete(st.checksums, k)
+		}
+	}
+
 	c := Change{
 		ID:        uint(len(st.changes) + 1),
 		GUN:       gun.String(),
@@ -314,6 +379,10 @@ func getFilteredChanges(toInspect []Change, filterName string, records int, reve
 	return res
 }
 
-func entryKey(gun data.GUN, role data.RoleName) string {
-	return fmt.Sprintf("%s.%s", gun, role)
+func entryKey(gun data.GUN, role data.RoleName, channel *Channel) string {
+	return fmt.Sprintf("%s.%s.%s", gun, role, channel)
+}
+
+func checksumKey(gun data.GUN) string {
+	return gun.String()
 }

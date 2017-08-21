@@ -25,7 +25,7 @@ func metaFromRepo(t *testing.T, gun data.GUN, version int) map[string]StoredTUFM
 
 	tufMeta := make(map[string]StoredTUFMeta)
 	for role, tufdata := range metaBytes {
-		tufMeta[role.String()] = SampleCustomTUFObj(gun, role, version, tufdata)
+		tufMeta[role.String()] = SampleCustomTUFObj(gun, role, version, tufdata, &Published)
 	}
 
 	return tufMeta
@@ -37,7 +37,7 @@ func testTUFMetaStoreGetCurrent(t *testing.T, s MetaStore) {
 	tufDBStore := NewTUFMetaStorage(s)
 	var gun data.GUN = "testGUN"
 
-	initialRootTUF := SampleCustomTUFObj(gun, data.CanonicalRootRole, 1, nil)
+	initialRootTUF := SampleCustomTUFObj(gun, data.CanonicalRootRole, 1, nil, &Published)
 	ConsistentEmptyGetCurrentTest(t, tufDBStore, initialRootTUF)
 
 	// put an initial piece of root metadata data in the database,
@@ -83,7 +83,7 @@ func testTUFMetaStoreGetCurrent(t *testing.T, s MetaStore) {
 
 	// add another orphaned root, but ensure that we still get the previous root
 	// since the new root isn't in a timestamp/snapshot chain
-	orphanedRootTUF := SampleCustomTUFObj(gun, data.CanonicalRootRole, 3, []byte("orphanedRoot"))
+	orphanedRootTUF := SampleCustomTUFObj(gun, data.CanonicalRootRole, 3, []byte("orphanedRoot"), &Published)
 	require.NoError(t, s.UpdateCurrent(gun, MakeUpdate(orphanedRootTUF)), "unable to create orphaned root in store")
 
 	// a GetCurrent for this gun and root gets us the previous root, which is linked in timestamp and snapshot

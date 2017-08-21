@@ -10,7 +10,7 @@ import (
 
 func assertExpectedMemoryTUFMeta(t *testing.T, expected []StoredTUFMeta, s *MemStorage) {
 	for _, tufObj := range expected {
-		k := entryKey(tufObj.Gun, tufObj.Role)
+		k := entryKey(tufObj.Gun, tufObj.Role, tufObj.Channel)
 		versionList, ok := s.tufMeta[k]
 		require.True(t, ok, "Did not find this gun+role in store")
 		byVersion := make(map[int]ver)
@@ -29,6 +29,14 @@ func assertExpectedMemoryTUFMeta(t *testing.T, expected []StoredTUFMeta, s *MemS
 func TestMemoryUpdateCurrentEmpty(t *testing.T) {
 	s := NewMemStorage()
 	expected := testUpdateCurrentEmptyStore(t, s)
+	assertExpectedMemoryTUFMeta(t, expected, s)
+}
+
+// UpdateCurrent should succeed if there was no previous metadata of the same
+// gun and role in a channel.  They should be gettable.
+func TestMemoryUpdateCurrentInChannel(t *testing.T) {
+	s := NewMemStorage()
+	expected := testUpdateCurrentInChannel(t, s)
 	assertExpectedMemoryTUFMeta(t, expected, s)
 }
 
@@ -78,7 +86,7 @@ func TestGetCurrent(t *testing.T) {
 	_, _, err := s.GetCurrent("gun", "role")
 	require.IsType(t, ErrNotFound{}, err, "Expected error to be ErrNotFound")
 
-	s.UpdateCurrent("gun", MetaUpdate{"role", 1, []byte("test")})
+	s.UpdateCurrent("gun", MetaUpdate{"role", 1, []byte("test"), nil})
 	_, d, err := s.GetCurrent("gun", "role")
 	require.Nil(t, err, "Expected error to be nil")
 	require.Equal(t, []byte("test"), d, "Data was incorrect")

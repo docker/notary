@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/notary"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
 	"github.com/stretchr/testify/require"
@@ -37,19 +38,21 @@ func init() {
 	}
 
 	sqldbSetup = func(t *testing.T) (*SQLStorage, func()) {
-		var cleanup1 = func() {
-			gormDB, err := gorm.Open("mysql", dburl)
+		var cleanup = func() {
+			gormDB, err := gorm.Open(notary.MySQLBackend, dburl)
 			require.NoError(t, err)
 
 			// drop all tables, if they exist
-			gormDB.DropTable(&TUFFile{})
-			gormDB.DropTable(&Change{})
+			gormDB.DropTableIfExists(&TUFFile{})
+			gormDB.DropTableIfExists(&Change{})
+			gormDB.DropTableIfExists(&Channel{})
+			gormDB.DropTableIfExists(&channelsTufFiles{})
 		}
-		cleanup1()
-		dbStore := SetupSQLDB(t, "mysql", dburl)
+		cleanup()
+		dbStore := SetupSQLDB(t, notary.MySQLBackend, dburl)
 		return dbStore, func() {
+			cleanup()
 			dbStore.DB.Close()
-			cleanup1()
 		}
 	}
 }

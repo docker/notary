@@ -232,7 +232,7 @@ type FailingStore struct {
 	*storage.MemStorage
 }
 
-func (f FailingStore) GetCurrent(gun data.GUN, role data.RoleName) (*time.Time, []byte, error) {
+func (f FailingStore) GetCurrent(gun data.GUN, role data.RoleName, channels ...*storage.Channel) (*time.Time, []byte, error) {
 	return nil, nil, fmt.Errorf("failing store failed")
 }
 
@@ -248,7 +248,7 @@ type CorruptedStore struct {
 	*storage.MemStorage
 }
 
-func (c CorruptedStore) GetCurrent(gun data.GUN, role data.RoleName) (*time.Time, []byte, error) {
+func (c CorruptedStore) GetCurrent(gun data.GUN, role data.RoleName, channels ...*storage.Channel) (*time.Time, []byte, error) {
 	return &time.Time{}, []byte("junk"), nil
 }
 

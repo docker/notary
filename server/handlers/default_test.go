@@ -416,7 +416,7 @@ type failStore struct {
 	storage.MemStorage
 }
 
-func (s *failStore) GetCurrent(_ data.GUN, _ data.RoleName) (*time.Time, []byte, error) {
+func (s *failStore) GetCurrent(_ data.GUN, _ data.RoleName, channels ...*storage.Channel) (*time.Time, []byte, error) {
 	return nil, nil, fmt.Errorf("oh no! storage has failed")
 }
 

@@ -38,19 +38,21 @@ func init() {
 	}
 
 	sqldbSetup = func(t *testing.T) (*SQLStorage, func()) {
-		var cleanup1 = func() {
+		var cleanup = func() {
 			gormDB, err := gorm.Open(notary.PostgresBackend, dburl)
 			require.NoError(t, err)
 
 			// drop all tables, if they exist
-			gormDB.DropTable(&TUFFile{})
-			gormDB.DropTable(&Change{})
+			gormDB.DropTableIfExists(&TUFFile{})
+			gormDB.DropTableIfExists(&Change{})
+			gormDB.DropTableIfExists(&Channel{})
+			gormDB.DropTableIfExists(&channelsTufFiles{})
 		}
-		cleanup1()
+		cleanup()
 		dbStore := SetupSQLDB(t, notary.PostgresBackend, dburl)
 		return dbStore, func() {
 			dbStore.DB.Close()
-			cleanup1()
+			cleanup()
 		}
 	}
 }

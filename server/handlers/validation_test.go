@@ -26,20 +26,20 @@ type getFailStore struct {
 
 // GetCurrent returns the current metadata, or an error depending on whether
 // getFailStore is configured to return an error for this role
-func (f getFailStore) GetCurrent(gun data.GUN, tufRole data.RoleName) (*time.Time, []byte, error) {
+func (f getFailStore) GetCurrent(gun data.GUN, tufRole data.RoleName, channels ...*storage.Channel) (*time.Time, []byte, error) {
 	err := f.errsToReturn[tufRole.String()]
 	if err == nil {
-		return f.MetaStore.GetCurrent(gun, tufRole)
+		return f.MetaStore.GetCurrent(gun, tufRole, channels...)
 	}
 	return nil, nil, err
 }
 
 // GetChecksum returns the metadata with this checksum, or an error depending on
 // whether getFailStore is configured to return an error for this role
-func (f getFailStore) GetChecksum(gun data.GUN, tufRole data.RoleName, checksum string) (*time.Time, []byte, error) {
+func (f getFailStore) GetChecksum(gun data.GUN, tufRole data.RoleName, checksum string, channels ...*storage.Channel) (*time.Time, []byte, error) {
 	err := f.errsToReturn[tufRole.String()]
 	if err == nil {
-		return f.MetaStore.GetChecksum(gun, tufRole, checksum)
+		return f.MetaStore.GetChecksum(gun, tufRole, checksum, channels...)
 	}
 	return nil, nil, err
 }

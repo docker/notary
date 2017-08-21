@@ -260,15 +260,30 @@ type recordingMetaStore struct {
 
 // GetCurrent gets the metadata from the underlying MetaStore, but also records
 // that the metadata was requested
-func (r *recordingMetaStore) GetCurrent(gun data.GUN, role data.RoleName) (*time.Time, []byte, error) {
-	r.gotten = append(r.gotten, fmt.Sprintf("%s.%s", gun.String(), role.String()))
+func (r *recordingMetaStore) GetCurrent(gun data.GUN, role data.RoleName, channels ...*storage.Channel) (*time.Time, []byte, error) {
+	var channelBuf bytes.Buffer
+
+	if len(channels) == 0 {
+		channels = []*storage.Channel{&storage.Published}
+	}
+	for _, channel := range channels {
+		channelBuf.WriteString(channel.Name)
+	}
+	r.gotten = append(r.gotten, fmt.Sprintf("%s.%s.%s", gun.String(), role.String(), channelBuf.String()))
 	return r.MemStorage.GetCurrent(gun, role)
 }
 
 // GetChecksum gets the metadata from the underlying MetaStore, but also records
 // that the metadata was requested
-func (r *recordingMetaStore) GetChecksum(gun data.GUN, role data.RoleName, checksum string) (*time.Time, []byte, error) {
-	r.gotten = append(r.gotten, fmt.Sprintf("%s.%s", gun.String(), role.String()))
+func (r *recordingMetaStore) GetChecksum(gun data.GUN, role data.RoleName, checksum string, channels ...*storage.Channel) (*time.Time, []byte, error) {
+	var channelBuf bytes.Buffer
+	if len(channels) == 0 {
+		channels = []*storage.Channel{&storage.Published}
+	}
+	for _, channel := range channels {
+		channelBuf.WriteString(channel.Name)
+	}
+	r.gotten = append(r.gotten, fmt.Sprintf("%s.%s.%s", gun.String(), role.String(), channelBuf.String()))
 	return r.MemStorage.GetChecksum(gun, role, checksum)
 }
 
@@ -368,7 +383,7 @@ func TestConfigFileTLSCanBeRelativeToConfigOrAbsolute(t *testing.T) {
 
 	// validate that we actually managed to connect and attempted to download the root though
 	require.Len(t, m.gotten, 1)
-	require.Equal(t, m.gotten[0], "repo.root")
+	require.Equal(t, m.gotten[0], "repo.root.published")
 }
 
 // Whatever TLS config is in the config file can be overridden by the command line
@@ -418,7 +433,7 @@ func TestConfigFileOverridenByCmdLineFlags(t *testing.T) {
 
 	// validate that we actually managed to connect and attempted to download the root though
 	require.Len(t, m.gotten, 1)
-	require.Equal(t, m.gotten[0], "repo.root")
+	require.Equal(t, m.gotten[0], "repo.root.published")
 }
 
 // the config can specify trust pinning settings for TOFUs, as well as pinned Certs or CA

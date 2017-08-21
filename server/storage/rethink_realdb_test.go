@@ -142,7 +142,6 @@ func TestRethinkGetVersion(t *testing.T) {
 func TestRethinkUpdateManyNoConflicts(t *testing.T) {
 	dbStore, cleanup := rethinkDBSetup(t)
 	defer cleanup()
-
 	testUpdateManyNoConflicts(t, dbStore)
 }
 
