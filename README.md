@@ -6,7 +6,6 @@ The Notary project comprises a [server](cmd/notary-server) and a [client](cmd/no
 with trusted collections.  Please see the [service architecture](docs/service_architecture.md) documentation
 for more information.
 
-
 Notary aims to make the internet more secure by making it easy for people to
 publish and verify content. We often rely on TLS to secure our communications
 with a web server which is inherently flawed, as any compromise of the server
@@ -32,6 +31,21 @@ Notary is based on [The Update Framework](https://www.theupdateframework.com/), 
 * **Use of Existing Distribution**: Notary's trust guarantees are not tied at all to particular distribution channels from which content is delivered. Therefore, trust can be added to any existing content delivery mechanism.
 * **Untrusted Mirrors and Transport**: All of the notary metadata can be mirrored and distributed via arbitrary channels.
 
+### Intended Use Cases
+
+While some of the below use cases have already been achieved in one or more contexts, the intent is that Notary can
+serve as the foundation for all these use cases.
+
+- Package signing
+- Container image signing
+- OS/Kernel signing
+- Signing cluster definitions
+
+### Out of Scope Use Cases
+
+- Signing communications (i.e. email)
+- Signed logs (though Notary/TUF would very much suit signing log files backed up offsite)
+
 ## Security
 
 Please see our [service architecture docs](docs/service_architecture.md#threat-model) for more information about our threat model, which details the varying survivability and severities for key compromise as well as mitigations.
@@ -39,6 +53,52 @@ Please see our [service architecture docs](docs/service_architecture.md#threat-m
 Our last security audit was on July 31, 2015 by NCC ([results](docs/resources/ncc_docker_notary_audit_2015_07_31.pdf)).
 
 Any security vulnerabilities can be reported to security@docker.com.
+
+### Comparative Analysis to other signing systems
+
+#### Features 
+
+Signing Mechanism | Provenance | Delegation | Key Rotation | Freshness | Thresholds
+--- | --- | --- | --- | --- | ---
+TUF | ✔ | ✔ | ✔ | ✔ | ✔  
+Notary | ✔ | ✔ | ✔ | ✔ | Partial
+Traditional Package Signing | ✔ | ❌  | ❌  | ❌  | ❌  
+rkt trust | ✔ | ❌  | ❌  | ❌  | ❌  
+Red Hat Container Image Signing | ✔ | ❌  | ❌  | ❌  | ❌  
+YUM | ✔ | ❌  | ❌  | ❌  | ❌  
+APT | ✔ | ❌  | ❌  | ❌  | ❌  
+PyPI | ✔ | ❌  | ❌  | ❌  | ❌  
+GPG | ✔ | ❌  | ❌  | ❌  | ❌  
+No Signing | Partial (TLS) | ❌  | ❌  | ❌  | ❌  
+
+#### Protection from attacks
+
+Definitions taken from the [TUF specification](https://github.com/theupdateframework/tuf/blob/develop/docs/tuf-spec.md):
+
+- **Arbitrary installation** attacks. An attacker installs anything they want on the client system. That is, an attacker can provide arbitrary files in response to download requests and the files will not be detected as illegitimate.
+- **Endless data** attacks. Attackers should not be able to respond to client requests with huge amounts of data (extremely large files) that interfere with the client's system.
+- **Extraneous dependencies** attacks. Attackers should not be able to cause clients to download or install software dependencies that are not the intended dependencies.
+- **Fast-forward** attacks. An attacker arbitrarily increases the version numbers of project metadata files in the snapshot metadata well beyond the current value, thus tricking a software update system into thinking any subsequent updates are trying to rollback the package to a previous, out-of-date version. In some situations, such as those where there is a maximum possible version number, the perpetrator could use a number so high that the system would never be able to match it with the one in the snapshot metadata, and thus new updates could never be downloaded.
+- **Indefinite freeze** attacks. Attackers should not be able to respond to client requests with the same, outdated metadata without the client being aware of the problem.
+- **Malicious** mirrors preventing updates. Repository mirrors should be unable to prevent updates from good mirrors.
+- **Mix-and-match** attacks. Attackers should not be able to trick clients into using a combination of metadata that never existed together on the repository at the same time.
+- **Rollback** attacks. Attackers should not be able to trick clients into installing software that is older than that which the client previously knew to be available.
+- **Slow retrieval** attacks. Attackers should not be able to prevent clients from being aware of interference with receiving updates by responding to client requests so slowly that automated updates never complete.
+- Vulnerability to **key compromises**. An attacker who is able to compromise a single key or less than a given threshold of keys can compromise clients. This includes relying on a single online key (such as only being protected by SSL) or a single offline key (such as most software update systems use to sign files).
+- **Wrong software installation**. An attacker provides a client with a trusted file that is not the one the client wanted.
+
+Signing Mechanism | Arbitrary Installation | Endless Data | Extraneous Dependencies | Fast Forward | Indefinite Freeze | Malicious Mirror | Mix-and-Match | Rollback | Slow Retrieval | Key Compromise | Wrong Installation
+--- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- 
+TUF | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ 
+Notary | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ 
+Traditional Package Signing | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌     
+rkt trust | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+Red Hat Container Image Signing | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+YUM | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+APT | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+PyPI | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+GPG | ✔ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
+No Signing | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ 
 
 # Getting started with the Notary CLI
 
