@@ -19,6 +19,13 @@ type tufClient struct {
 	cache      store.MetadataStore
 	oldBuilder tuf.RepoBuilder
 	newBuilder tuf.RepoBuilder
+
+	// setting this value will cause `downloadTimestamp` to download this specific
+	// timestamp checksum. All subsequent files will be downloaded based on the
+	// Merkle tree walk.
+	// N.B. this will generally require the appropriate root has already been
+	// setup in the builders.
+	tsChecksum []byte
 }
 
 // newTufClient initialized a tufClient with the given repo, remote source of content, and cache
@@ -172,8 +179,24 @@ func (c *tufClient) updateRootVersions(fromVersion, toVersion int) error {
 // use cache if the download fails (and the cache is still valid).
 func (c *tufClient) downloadTimestamp() error {
 	logrus.Debug("Loading timestamp...")
-	role := data.CanonicalTimestampRole
-	consistentInfo := c.newBuilder.GetConsistentInfo(role)
+	var (
+		role           = data.CanonicalTimestampRole
+		consistentInfo tuf.ConsistentInfo
+	)
+
+	if c.tsChecksum != nil {
+		consistentInfo = tuf.NewConsistentInfo(
+			role,
+			data.FileMeta{
+				Hashes: data.Hashes{
+					"sha256": c.tsChecksum,
+				},
+				Length: notary.MaxTimestampSize,
+			},
+		)
+	} else {
+		consistentInfo = c.newBuilder.GetConsistentInfo(role)
+	}
 
 	// always get the remote timestamp, since it supersedes the local one
 	cachedTS, cachedErr := c.cache.GetSized(role.String(), notary.MaxTimestampSize)

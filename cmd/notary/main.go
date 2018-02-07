@@ -186,10 +186,15 @@ func (n *notaryCommander) GetCommand() *cobra.Command {
 		retriever:    n.getRetriever(),
 	}
 
+	cmdDiffGenerator := &diffCommander{
+		configGetter: n.parseConfig,
+	}
+
 	notaryCmd.AddCommand(cmdKeyGenerator.GetCommand())
 	notaryCmd.AddCommand(cmdDelegationGenerator.GetCommand())
 
 	cmdTUFGenerator.AddToCommand(&notaryCmd)
+	cmdDiffGenerator.AddToCommand(&notaryCmd)
 
 	return &notaryCmd
 }

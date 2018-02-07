@@ -32,6 +32,14 @@ type ConsistentInfo struct {
 	fileMeta data.FileMeta
 }
 
+// NewConsistentInfo creates a new instance of ConsistentInfo
+func NewConsistentInfo(role data.RoleName, fm data.FileMeta) ConsistentInfo {
+	return ConsistentInfo{
+		RoleName: role,
+		fileMeta: fm,
+	}
+}
+
 // ChecksumKnown determines whether or not we know enough to provide a size and
 // consistent name
 func (c ConsistentInfo) ChecksumKnown() bool {
