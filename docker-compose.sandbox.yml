@@ -1,0 +1,86 @@
+version: "2"
+services:
+  server:
+    image: notary:server-dev
+    build:
+      context: .
+      dockerfile: server.Dockerfile
+    networks:
+      mdb:
+      sig:
+        aliases:
+          - notary-server
+    ports:
+      - "8080"
+      - "4443:4443"
+    entrypoint: /usr/bin/env sh
+    command: -c "./migrations/migrate.sh && notary-server -config=fixtures/server-config.json"
+    depends_on:
+      - mysql
+      - signer
+
+  signer:
+    image: notary:signer-dev
+    build:
+      context: .
+      dockerfile: signer.Dockerfile
+    networks:
+      mdb:
+      sig:
+        aliases:
+          - notarysigner
+    entrypoint: /usr/bin/env sh
+    command: -c "./migrations/migrate.sh && notary-signer -config=fixtures/signer-config.json"
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mariadb:10.4
+    networks:
+      - mdb
+    volumes:
+      - ./notarysql/mysql-initdb.d:/docker-entrypoint-initdb.d
+      - notary_data:/var/lib/mysql
+    environment:
+      TERM: dumb
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+    command: mysqld --innodb_file_per_table
+
+  registry:
+    image: registry:2.7
+    environment:
+      REGISTRY_HTTP_SECRET: topS3cr3t
+    networks:
+      - sig
+
+  sandbox:
+    image: notary:sandbox-dev
+    build:
+      context: .
+      dockerfile: sandbox.Dockerfile
+    networks:
+      - sig
+    volumes:
+      - dct_data:/root/.docker/trust:rw
+    depends_on:
+      - server
+    privileged: true
+    environment:
+      DOCKER_CONTENT_TRUST: "1"
+      DOCKER_CONTENT_TRUST_SERVER: https://notary-server:4443
+    entrypoint: /usr/bin/env sh
+    command: |-
+      -c 'cp ~/.notary/certs/root-ca.crt /usr/local/share/ca-certificates/root-ca.crt &&
+        update-ca-certificates &&
+        dockerd-entrypoint.sh --insecure-registry registry:5000'
+
+volumes:
+  dct_data:
+    external: false
+  notary_data:
+    external: false
+networks:
+  mdb:
+    external: false
+  sig:
+    external: false
