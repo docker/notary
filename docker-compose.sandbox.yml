@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: server.Dockerfile
+    volumes:
+      - go_modules:/go/pkg/mod
     networks:
       mdb:
       sig:
@@ -24,6 +26,8 @@ services:
     build:
       context: .
       dockerfile: signer.Dockerfile
+    volumes:
+      - go_modules:/go/pkg/mod
     networks:
       mdb:
       sig:
@@ -64,6 +68,7 @@ services:
       - sig
     volumes:
       - dct_data:/root/.docker/trust:rw
+      - go_modules:/go/pkg/mod
     depends_on:
       - server
     privileged: true
@@ -77,6 +82,7 @@ services:
         dockerd-entrypoint.sh --insecure-registry registry:5000'
 
 volumes:
+  go_modules:
   dct_data:
     external: false
   notary_data:
