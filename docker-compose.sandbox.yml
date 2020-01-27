@@ -50,6 +50,8 @@ services:
     image: registry:2.7
     environment:
       REGISTRY_HTTP_SECRET: topS3cr3t
+    ports:
+      - "5000:5000"
     networks:
       - sig
 
