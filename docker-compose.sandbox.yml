@@ -81,6 +81,31 @@ services:
         update-ca-certificates &&
         dockerd-entrypoint.sh --insecure-registry registry:5000'
 
+  # This sandbox can be used for testing delegation keys;
+  # There is no mount to the shared docker trust folder!
+  # So if you want to pull push etc, you need to export delegation keys from the sandbox
+  # to this sandbox and load them with docker trust key load.
+  sandbox-2:
+    image: notary:sandbox-dev
+    build:
+      context: .
+      dockerfile: sandbox.Dockerfile
+    networks:
+      - sig
+    volumes:
+      - go_modules:/go/pkg/mod
+    depends_on:
+      - server
+    privileged: true
+    environment:
+      DOCKER_CONTENT_TRUST: "1"
+      DOCKER_CONTENT_TRUST_SERVER: https://notary-server:4443
+    entrypoint: /usr/bin/env sh
+    command: |-
+      -c 'cp ~/.notary/certs/root-ca.crt /usr/local/share/ca-certificates/root-ca.crt &&
+        update-ca-certificates &&
+        dockerd-entrypoint.sh --insecure-registry registry:5000'
+        
 volumes:
   go_modules:
   dct_data:
