@@ -114,6 +114,9 @@ Yubikey support requires
 (which are bundled with the PIV tools)</a> to be available in standard
 library locations.
 
+Note that in case the Yubikey is already being used as a smartcard for GnuPG,
+gpg-agent might prevent Notary from accessing the device. See #1006.
+
 ## Work with delegation roles
 
 Delegation roles simplify collaborator workflows in notary trusted collections, and
