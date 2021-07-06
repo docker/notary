@@ -31,22 +31,22 @@
 
 	[people.cyli]
 	Name = "Ying Li"
-	Email = "ying.li@docker.com"
+	Email = "cyli@twistedmatrix.com"
 	GitHub = "cyli"
 
 	[people.diogomonica]
 	Name = "Diogo Monica"
-	Email = "diogo@docker.com"
+	Email = "diogo.monica@gmail.com"
 	GitHub = "diogomonica"
 
 	[people.endophage]
 	Name = "David Lawrence"
-	Email = "david.lawrence@docker.com"
+	Email = "dclwrnc@gmail.com"
 	GitHub = "endophage"
 
 	[people.ecordell]
 	Name = "Evan Cordell"
-	Email = "evan.cordell@coreos.com"
+	Email = "evan.cordell@redhat.com"
 	GitHub = "ecordell"
 
 	[people.hukeping]
@@ -61,7 +61,7 @@
 
 	[people.nathanmccauley]
 	Name = "Nathan McCauley"
-	Email = "nathan.mccauley@docker.com"
+	Email = "nathan.mccauley@gmail.com"
 	GitHub = "nathanmccauley"
 
 	[people.riyazdf]
