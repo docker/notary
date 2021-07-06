@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.7.0](https://github.com/docker/notary/releases/tag/v0.7.0) 12/01/2021
+## [v0.7.0](https://github.com/docker/notary/releases/tag/v0.7.0) 01/12/2021
 + Switch to Go modules [#1523](https://github.com/theupdateframework/notary/pull/1523)
 + Use golang/x/crypto for ed25519 [#1344](https://github.com/theupdateframework/notary/pull/1344)
 + Update Go version
