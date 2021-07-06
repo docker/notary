@@ -1,4 +1,4 @@
-FROM golang:1.14.1-alpine
+FROM golang:1.15.7-alpine
 
 ENV NOTARYPKG github.com/theupdateframework/notary
 ENV GO111MODULE=on
