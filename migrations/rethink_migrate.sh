@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env sh
 
 # When run in the docker containers, the working directory
 # is the root of the repo.

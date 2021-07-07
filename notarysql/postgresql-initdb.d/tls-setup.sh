@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env sh
 
 # Setup the server so it knows where to find certs so that server can be
 # started with TLS enabled.
