@@ -1528,6 +1528,49 @@ func TestClientKeyGenerationRotation(t *testing.T) {
 	}
 }
 
+func TestRootKeyRotationWithAutoConfirm(t *testing.T) {
+	// -- setup --
+	setUp(t)
+
+	tempDir := tempDirWithConfig(t, "{}")
+	defer os.RemoveAll(tempDir)
+
+	server := setupServer()
+	defer server.Close()
+
+	assertNumKeys(t, tempDir, 0, 0, true)
+
+	// initialize a repo, should have signing keys and 1 new root key
+	_, err := runCommand(t, tempDir, "-s", server.URL, "init", "gun")
+	require.NoError(t, err)
+	assertNumKeys(t, tempDir, 1, 2, true)
+
+	tempfiles := make([]string, 2)
+	for i := 0; i < 2; i++ {
+		tempFile, err := ioutil.TempFile("", "targetfile")
+		require.NoError(t, err)
+		tempFile.Close()
+		tempfiles[i] = tempFile.Name()
+		defer os.Remove(tempFile.Name())
+	}
+
+	assertSuccessfullyPublish(t, tempDir, server.URL, "gun", "target", tempfiles[0])
+
+	// rotate without -y command
+	_, err = runCommand(t, tempDir, "-s", server.URL, "key", "rotate", "gun", data.CanonicalRootRole.String())
+	require.NoError(t, err)
+	// no rotation
+	assertNumKeys(t, tempDir, 1, 2, true)
+
+	// rotate with auto confirm
+	_, err = runCommand(t, tempDir, "-s", server.URL, "key", "rotate", "gun", data.CanonicalRootRole.String(), "-y")
+	require.NoError(t, err)
+	// no rotation happened due to lack of confirmation
+	assertNumKeys(t, tempDir, 2, 2, true)
+
+	assertSuccessfullyPublish(t, tempDir, server.URL, "gun", "target2", tempfiles[1])
+}
+
 // Tests key rotation
 func TestKeyRotation(t *testing.T) {
 	// -- setup --
