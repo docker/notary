@@ -49,7 +49,8 @@ learn more about the configuration section corresponding to that key:
       "realm": "https://auth.docker.io/token",
       "service": "notary-server",
       "issuer": "auth.docker.io",
-      "rootcertbundle": "/path/to/auth.docker.io/cert"
+      "rootcertbundle": "/path/to/auth.docker.io/cert",
+      "autoredirect": false
     }
   },
   <a href="../common-configs/#logging-section-optional">"logging"</a>: {
@@ -260,7 +261,8 @@ Example:
     "realm": "https://auth.docker.io",
     "service": "notary-server",
     "issuer": "auth.docker.io",
-    "rootcertbundle": "/path/to/auth.docker.io/cert"
+    "rootcertbundle": "/path/to/auth.docker.io/cert",
+    "autoredirect": false
   }
 }
 ```
