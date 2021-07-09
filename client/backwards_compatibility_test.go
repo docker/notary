@@ -16,6 +16,7 @@ import (
 	"github.com/theupdateframework/notary"
 	"github.com/theupdateframework/notary/passphrase"
 	store "github.com/theupdateframework/notary/storage"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf/data"
 )
@@ -91,7 +92,7 @@ func Test0Dot1Migration(t *testing.T) {
 	defer ts.Close()
 
 	_, err = NewFileCachedRepository(tmpDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
 	// check that root_keys and tuf_keys are gone and that all corect keys are present and have the correct headers
@@ -139,7 +140,7 @@ func Test0Dot3Migration(t *testing.T) {
 	defer ts.Close()
 
 	_, err = NewFileCachedRepository(tmpDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
 	// check that root_keys and tuf_keys are gone and that all corect keys are present and have the correct headers
@@ -198,7 +199,7 @@ func Test0Dot1RepoFormat(t *testing.T) {
 	defer ts.Close()
 
 	r, err := NewFileCachedRepository(tmpDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 	repo := r.(*repository)
 
@@ -262,7 +263,7 @@ func Test0Dot3RepoFormat(t *testing.T) {
 	defer ts.Close()
 
 	r, err := NewFileCachedRepository(tmpDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 	repo := r.(*repository)
 
@@ -329,7 +330,7 @@ func TestDownloading0Dot1RepoFormat(t *testing.T) {
 	defer os.RemoveAll(repoDir)
 
 	r, err := NewFileCachedRepository(repoDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 	repo := r.(*repository)
 
@@ -355,7 +356,7 @@ func TestDownloading0Dot3RepoFormat(t *testing.T) {
 	defer os.RemoveAll(repoDir)
 
 	r, err := NewFileCachedRepository(repoDir, gun, ts.URL, http.DefaultTransport,
-		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{})
+		passphrase.ConstantRetriever(passwd), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 	repo := r.(*repository)
 

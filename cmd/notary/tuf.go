@@ -30,10 +30,12 @@ import (
 	"github.com/theupdateframework/notary/cryptoservice"
 	"github.com/theupdateframework/notary/passphrase"
 	"github.com/theupdateframework/notary/trustmanager"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf/data"
 	tufutils "github.com/theupdateframework/notary/tuf/utils"
 	"github.com/theupdateframework/notary/utils"
+	"google.golang.org/grpc/metadata"
 )
 
 var cmdTUFListTemplate = usageTemplate{
@@ -1011,6 +1013,18 @@ func getTrustPinning(config *viper.Viper) (trustpinning.TrustPinConfig, error) {
 	}, nil
 }
 
+func getGRPCKeyStore(config *viper.Viper) grpckeystore.GRPCClientConfig {
+	return grpckeystore.GRPCClientConfig{
+		Server:          config.GetString("grpc_keystore.url"),
+		TLSCertFile:     config.GetString("grpc_keystore.tls_client_cert"),
+		TLSKeyFile:      config.GetString("grpc_keystore.tls_client_key"),
+		TLSCAFile:       config.GetString("grpc_keystore.root_ca"),
+		DialTimeout:     config.GetDuration("grpc_keystore.dial_timeout"),
+		BlockingTimeout: config.GetDuration("grpc_keystore.blocking_timeout"),
+		Metadata:        metadata.New(config.GetStringMapString("grpc_keystore.metadata")),
+	}
+}
+
 // authRoundTripper tries to authenticate the requests via multiple HTTP transactions (until first succeed)
 type authRoundTripper struct {
 	trippers []http.RoundTripper
@@ -1060,7 +1074,8 @@ func maybeAutoPublish(cmd *cobra.Command, doPublish bool, gun data.GUN, config *
 	}
 
 	nRepo, err := notaryclient.NewFileCachedRepository(
-		config.GetString("trust_dir"), gun, getRemoteTrustServer(config), rt, passRetriever, trustPin)
+		config.GetString("trust_dir"), gun, getRemoteTrustServer(config), rt,
+		passRetriever, trustPin, getGRPCKeyStore(config))
 	if err != nil {
 		return err
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/auth/challenge"
 	"github.com/docker/distribution/registry/client/transport"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf/data"
 )
@@ -29,6 +30,7 @@ func Example() {
 		makeHubTransport(server, image),
 		nil,
 		trustpinning.TrustPinConfig{},
+		grpckeystore.GRPCClientConfig{},
 	)
 	if err != nil {
 		panic(err)

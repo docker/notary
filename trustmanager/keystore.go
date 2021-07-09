@@ -89,6 +89,12 @@ func (s *GenericKeyStore) GetKeyInfo(keyID string) (KeyInfo, error) {
 	return KeyInfo{}, fmt.Errorf("Could not find info for keyID %s", keyID)
 }
 
+// GenerateKey requests that the keystore internally generate a key.
+// GenericKeyStore doesn't support this operation
+func (s *GenericKeyStore) GenerateKey(keyInfo KeyInfo) (data.PrivateKey, error) {
+	return nil, fmt.Errorf("operation not supported")
+}
+
 // AddKey stores the contents of a PEM-encoded private key as a PEM block
 func (s *GenericKeyStore) AddKey(keyInfo KeyInfo, privKey data.PrivateKey) error {
 	var (

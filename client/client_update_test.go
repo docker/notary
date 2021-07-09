@@ -20,6 +20,7 @@ import (
 	"github.com/theupdateframework/notary"
 	"github.com/theupdateframework/notary/passphrase"
 	store "github.com/theupdateframework/notary/storage"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf/data"
 	"github.com/theupdateframework/notary/tuf/signed"
@@ -32,7 +33,7 @@ func newBlankRepo(t *testing.T, url string) (*repository, string) {
 	require.NoError(t, err, "failed to create a temporary directory: %s", err)
 
 	r, err := NewFileCachedRepository(tempBaseDir, "docker.com/notary", url,
-		http.DefaultTransport, passphrase.ConstantRetriever("pass"), trustpinning.TrustPinConfig{})
+		http.DefaultTransport, passphrase.ConstantRetriever("pass"), trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err)
 	return r.(*repository), tempBaseDir
 }
@@ -208,7 +209,8 @@ func TestUpdateInOfflineMode(t *testing.T) {
 	defer os.RemoveAll(tempBaseDir)
 
 	or, err := NewFileCachedRepository(tempBaseDir, "docker.com/notary", "https://nope",
-		nil, passphrase.ConstantRetriever("pass"), trustpinning.TrustPinConfig{})
+		nil, passphrase.ConstantRetriever("pass"), trustpinning.TrustPinConfig{},
+		grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err)
 	offlineRepo := or.(*repository)
 	err = offlineRepo.updateTUF(false)

@@ -38,6 +38,7 @@ func ConfigureRepo(v *viper.Viper, retriever notary.PassRetriever, onlineOperati
 			rt,
 			retriever,
 			trustPin,
+			getGRPCKeyStore(v),
 		)
 	}
 

@@ -28,6 +28,7 @@ import (
 	"github.com/theupdateframework/notary/server/storage"
 	store "github.com/theupdateframework/notary/storage"
 	"github.com/theupdateframework/notary/trustmanager"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf/data"
 	"github.com/theupdateframework/notary/tuf/utils"
@@ -334,7 +335,7 @@ func setUpRepo(t *testing.T, tempBaseDir string, gun data.GUN, ret notary.PassRe
 	ts := httptest.NewServer(server.RootHandler(ctx, nil, cryptoService, nil, nil, nil))
 
 	repo, err := client.NewFileCachedRepository(
-		tempBaseDir, gun, ts.URL, http.DefaultTransport, ret, trustpinning.TrustPinConfig{})
+		tempBaseDir, gun, ts.URL, http.DefaultTransport, ret, trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
 	rootPubKey, err := repo.GetCryptoService().Create(data.CanonicalRootRole, "", data.ECDSAKey)
@@ -376,7 +377,7 @@ func TestRotateKeyRemoteServerManagesKey(t *testing.T) {
 		}
 		require.NoError(t, k.keysRotate(&cobra.Command{}, []string{gun.String(), role, "-r"}))
 
-		repo, err := client.NewFileCachedRepository(tempBaseDir, data.GUN(gun), ts.URL, http.DefaultTransport, ret, trustpinning.TrustPinConfig{})
+		repo, err := client.NewFileCachedRepository(tempBaseDir, data.GUN(gun), ts.URL, http.DefaultTransport, ret, trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 		require.NoError(t, err, "error creating repo: %s", err)
 
 		cl, err := repo.GetChangelist()
@@ -430,7 +431,7 @@ func TestRotateKeyBothKeys(t *testing.T) {
 	require.NoError(t, k.keysRotate(&cobra.Command{}, []string{gun.String(), data.CanonicalTargetsRole.String()}))
 	require.NoError(t, k.keysRotate(&cobra.Command{}, []string{gun.String(), data.CanonicalSnapshotRole.String()}))
 
-	repo, err := client.NewFileCachedRepository(tempBaseDir, data.GUN(gun), ts.URL, nil, ret, trustpinning.TrustPinConfig{})
+	repo, err := client.NewFileCachedRepository(tempBaseDir, data.GUN(gun), ts.URL, nil, ret, trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
 	cl, err := repo.GetChangelist()
@@ -495,7 +496,7 @@ func TestRotateKeyRootIsInteractive(t *testing.T) {
 
 	require.Contains(t, out.String(), "Aborting action")
 
-	repo, err := client.NewFileCachedRepository(tempBaseDir, gun, ts.URL, nil, ret, trustpinning.TrustPinConfig{})
+	repo, err := client.NewFileCachedRepository(tempBaseDir, gun, ts.URL, nil, ret, trustpinning.TrustPinConfig{}, grpckeystore.GRPCClientConfig{})
 	require.NoError(t, err, "error creating repo: %s", err)
 
 	// There should still just be one root key (and one targets and one snapshot)

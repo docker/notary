@@ -288,10 +288,20 @@ func ParsePEMPublicKey(pubKeyBytes []byte) (data.PublicKey, error) {
 	}
 }
 
+// ParsePublicKey takes a ASN.1 DER encoded public key and returns a
+// a data.PublicKey
+func ParsePublicKey(pubKeyBytes []byte) (data.PublicKey, error) {
+	keyType, err := keyTypeForPublicKey(pubKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+	return data.NewPublicKey(keyType, pubKeyBytes), nil
+}
+
 func keyTypeForPublicKey(pubKeyBytes []byte) (string, error) {
 	pub, err := x509.ParsePKIXPublicKey(pubKeyBytes)
 	if err != nil {
-		return "", fmt.Errorf("unable to parse pem encoded public key: %v", err)
+		return "", fmt.Errorf("unable to parse ASN.1 encoded public key: %v", err)
 	}
 	switch pub.(type) {
 	case *ecdsa.PublicKey:

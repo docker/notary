@@ -17,6 +17,7 @@ import (
 	"github.com/theupdateframework/notary/client/changelist"
 	"github.com/theupdateframework/notary/cryptoservice"
 	store "github.com/theupdateframework/notary/storage"
+	"github.com/theupdateframework/notary/trustmanager/grpckeystore"
 	"github.com/theupdateframework/notary/trustpinning"
 	"github.com/theupdateframework/notary/tuf"
 	"github.com/theupdateframework/notary/tuf/data"
@@ -58,7 +59,8 @@ type repository struct {
 //
 // In case of a nil RoundTripper, a default offline store is used instead.
 func NewFileCachedRepository(baseDir string, gun data.GUN, baseURL string, rt http.RoundTripper,
-	retriever notary.PassRetriever, trustPinning trustpinning.TrustPinConfig) (Repository, error) {
+	retriever notary.PassRetriever, trustPinning trustpinning.TrustPinConfig,
+	grpcKeyStoreConfig grpckeystore.GRPCClientConfig) (Repository, error) {
 
 	cache, err := store.NewFileStore(
 		filepath.Join(baseDir, tufDir, filepath.FromSlash(gun.String()), "metadata"),
@@ -68,7 +70,7 @@ func NewFileCachedRepository(baseDir string, gun data.GUN, baseURL string, rt ht
 		return nil, err
 	}
 
-	keyStores, err := getKeyStores(baseDir, retriever)
+	keyStores, err := getKeyStores(baseDir, retriever, &grpcKeyStoreConfig)
 	if err != nil {
 		return nil, err
 	}
