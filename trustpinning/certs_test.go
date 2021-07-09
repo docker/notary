@@ -38,8 +38,8 @@ type SignedRSARootTemplate struct {
 var passphraseRetriever = func(string, string, bool, int) (string, bool, error) { return "passphrase", false, nil }
 
 type rootData struct {
-	rootMeta                      *data.Signed
-	rootPubKeyID, targetsPubkeyID string
+	rootMeta                                          *data.Signed
+	rootCanonicalKeyID, rootPubKeyID, targetsPubkeyID string
 }
 
 type certChain struct {
@@ -60,6 +60,9 @@ func sampleRootData(t *testing.T) *rootData {
 		tufRepo, _, err := testutils.EmptyRepo("docker.com/notary")
 		require.NoError(t, err)
 		_sampleRootData.rootPubKeyID = tufRepo.Root.Signed.Roles[data.CanonicalRootRole].KeyIDs[0]
+		canonicalKeyID, err := utils.CanonicalKeyID(tufRepo.Root.Signed.Keys[_sampleRootData.rootPubKeyID])
+		require.NoError(t, err)
+		_sampleRootData.rootCanonicalKeyID = canonicalKeyID
 		_sampleRootData.targetsPubkeyID = tufRepo.Root.Signed.Roles[data.CanonicalTargetsRole].KeyIDs[0]
 		tufRepo.Root.Signed.Version++
 		_sampleRootData.rootMeta, err = tufRepo.SignRoot(data.DefaultExpires(data.CanonicalRootRole), nil)
@@ -251,6 +254,70 @@ func TestValidateRootWithPinnedCert(t *testing.T) {
 	// This extra assignment is necessary because ValidateRoot calls through to a successful VerifySignature which marks IsValid
 	typedSignedRoot.Signatures[0].IsValid = true
 	require.Equal(t, typedSignedRoot, validatedSignedRoot)
+}
+
+func TestValidateRootWithPinnedKeyID(t *testing.T) {
+	typedSignedRoot, err := data.RootFromSigned(sampleRootData(t).rootMeta)
+	require.NoError(t, err)
+
+	assertTrustPinningValid := func(tp trustpinning.TrustPinConfig) {
+		validatedSignedRoot, err := trustpinning.ValidateRoot(nil, sampleRootData(t).rootMeta, "docker.com/notary",
+			trustpinning.TrustPinConfig{
+				KeyIDs:      map[string][]string{"docker.com/notary": {sampleRootData(t).rootCanonicalKeyID}},
+				DisableTOFU: true})
+		require.NoError(t, err)
+		// This extra assignment is necessary because ValidateRoot calls through to a successful VerifySignature which marks IsValid
+		typedSignedRoot.Signatures[0].IsValid = true
+		require.Equal(t, validatedSignedRoot, typedSignedRoot)
+	}
+
+	// This call to trustpinning.ValidateRoot should succeed with the correct key ID, which is not the same as the public key ID
+	assertTrustPinningValid(trustpinning.TrustPinConfig{
+		KeyIDs:      map[string][]string{"docker.com/notary": {sampleRootData(t).rootCanonicalKeyID}},
+		DisableTOFU: true})
+
+	// This call to trustpinning.ValidateRoot should also succeed with the correct key ID even though we passed an extra bad one
+	assertTrustPinningValid(trustpinning.TrustPinConfig{
+		KeyIDs:      map[string][]string{"docker.com/notary": {sampleRootData(t).rootCanonicalKeyID, "invalidID"}},
+		DisableTOFU: true})
+
+	// This call to trustpinning.ValidateRoot should fail even though the correct KeyID is provided, because there is an invalid
+	// cert ID which takes precedence.
+	_, err = trustpinning.ValidateRoot(nil, sampleRootData(t).rootMeta, "docker.com/notary",
+		trustpinning.TrustPinConfig{
+			Certs:       map[string][]string{"docker.com/notary": {"invalidID"}},
+			KeyIDs:      map[string][]string{"docker.com/notary": {sampleRootData(t).rootCanonicalKeyID}},
+			DisableTOFU: true,
+		})
+	require.Error(t, err)
+
+	// This call to trustpinning.ValidateRoot should succeed with a wildcard match
+	assertTrustPinningValid(trustpinning.TrustPinConfig{
+		KeyIDs:      map[string][]string{"docker.com/n*": {sampleRootData(t).rootCanonicalKeyID}},
+		DisableTOFU: true})
+
+	// These call to trustpinning.ValidateRoot should fail because even though there is a correct wildcard match, the more
+	// specific match takes precedence
+	_, err = trustpinning.ValidateRoot(nil, sampleRootData(t).rootMeta, "docker.com/notary",
+		trustpinning.TrustPinConfig{
+			Certs: map[string][]string{"docker.com/notary": {"invalidID"}},
+			KeyIDs: map[string][]string{
+				"docker.com/n*":     {sampleRootData(t).rootCanonicalKeyID},
+				"docker.com/notary": {"invalidID"},
+			},
+			DisableTOFU: true,
+		})
+	require.Error(t, err)
+	_, err = trustpinning.ValidateRoot(nil, sampleRootData(t).rootMeta, "docker.com/notary",
+		trustpinning.TrustPinConfig{
+			Certs: map[string][]string{"docker.com/notary": {"invalidID"}},
+			KeyIDs: map[string][]string{
+				"docker.com/n*":   {sampleRootData(t).rootCanonicalKeyID},
+				"docker.com/not*": {"invalidID"},
+			},
+			DisableTOFU: true,
+		})
+	require.Error(t, err)
 }
 
 func TestValidateRootWithPinnedCertAndIntermediates(t *testing.T) {

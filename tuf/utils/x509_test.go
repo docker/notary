@@ -13,6 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudflare/cfssl/config"
+	"github.com/cloudflare/cfssl/csr"
+	"github.com/cloudflare/cfssl/helpers"
+	"github.com/cloudflare/cfssl/initca"
+	"github.com/cloudflare/cfssl/signer"
+	"github.com/cloudflare/cfssl/signer/local"
 	"github.com/stretchr/testify/require"
 	"github.com/theupdateframework/notary/tuf/data"
 )
@@ -285,6 +291,77 @@ func TestECDSAX509PublickeyID(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, tufPrivKey.ID(), tufID)
+}
+
+func TestCanonicalKeyID(t *testing.T) {
+	// canonical key ID gets the public bytes, not the cert bytes, key ID
+	// of a certificate or certificate chain
+
+	// generate a CA, an intermediate, and a leaf certificate using CFSSL
+	// Create a simple CSR for the CA using the default CA validator and policy
+	keyTypes := map[string]*csr.BasicKeyRequest{
+		data.ECDSAx509Key: csr.NewBasicKeyRequest(),
+		data.RSAx509Key: {
+			A: "rsa",
+			S: 2048,
+		},
+	}
+
+	for pubkeyAlgo, keyRequest := range keyTypes {
+		req := &csr.CertificateRequest{
+			CN:         "docker.io/notary/root",
+			KeyRequest: keyRequest,
+			CA:         &csr.CAConfig{},
+		}
+
+		// Generate the CA and get the certificate and private key
+		rootCert, _, rootKey, _ := initca.New(req)
+		priv, _ := helpers.ParsePrivateKeyPEM(rootKey)
+		cert, _ := helpers.ParseCertificatePEM(rootCert)
+		s, _ := local.NewSigner(priv, cert, signer.DefaultSigAlgo(priv), initca.CAPolicy())
+
+		// first test self-signed cert
+		pubKey := data.NewPublicKey(pubkeyAlgo, rootCert)
+		require.NotNil(t, pubKey)
+		privKey, err := ParsePEMPrivateKey(rootKey, "")
+		require.NoError(t, err)
+		require.NotNil(t, privKey)
+		require.NotEqual(t, privKey.ID(), pubKey.ID())
+		canonicalKeyID, err := CanonicalKeyID(pubKey)
+		require.NoError(t, err)
+		require.Equal(t, privKey.ID(), canonicalKeyID)
+
+		req.CN = "docker.io/notary/intermediate"
+		intCSR, intKey, _ := csr.ParseRequest(req)
+		intCert, _ := s.Sign(signer.SignRequest{
+			Request: string(intCSR),
+			Subject: &signer.Subject{CN: req.CN},
+		})
+
+		priv, _ = helpers.ParsePrivateKeyPEM(intKey)
+		cert, _ = helpers.ParseCertificatePEM(intCert)
+		s, _ = local.NewSigner(priv, cert, signer.DefaultSigAlgo(priv), &config.Signing{
+			Default: config.DefaultConfig(),
+		})
+		req.CA = nil
+		req.CN = "docker.io/notary/leaf"
+		leafCSR, leafKey, _ := csr.ParseRequest(req)
+		leafCert, _ := s.Sign(signer.SignRequest{
+			Request: string(leafCSR),
+			Subject: &signer.Subject{CN: req.CN},
+		})
+
+		// test cert chain - leaf cert must come first
+		pubKey = data.NewPublicKey(pubkeyAlgo, append(leafCert, append(intCert, rootCert...)...))
+		require.NotNil(t, pubKey)
+		privKey, err = ParsePEMPrivateKey(leafKey, "")
+		require.NoError(t, err)
+		require.NotNil(t, privKey)
+		require.NotEqual(t, privKey.ID(), pubKey.ID())
+		canonicalKeyID, err = CanonicalKeyID(pubKey)
+		require.NoError(t, err)
+		require.Equal(t, privKey.ID(), canonicalKeyID)
+	}
 }
 
 func TestExtractPrivateKeyAttributes(t *testing.T) {

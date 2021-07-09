@@ -20,6 +20,7 @@ import (
 // 1. Certs
 // 2. CA
 // 3. TOFUS (TOFU over HTTPS)
+// 4. KeyIDs (canonical key IDs)
 //
 // Only one trust pinning option will be used to validate a particular GUN.
 type TrustPinConfig struct {
@@ -28,6 +29,8 @@ type TrustPinConfig struct {
 	CA map[string]string
 	// Certs maps a GUN to a list of certificate IDs
 	Certs map[string][]string
+	// KeyIDs map a GUN prefix to a list of canonical key IDs
+	KeyIDs map[string][]string
 	// DisableTOFU, when true, disables "Trust On First Use" of new key data
 	// This is false by default, which means new key data will always be trusted the first time it is seen.
 	DisableTOFU bool
@@ -38,24 +41,42 @@ type trustPinChecker struct {
 	config        TrustPinConfig
 	pinnedCAPool  *x509.CertPool
 	pinnedCertIDs []string
+	pinnedKeyIDs  []string
 }
 
 // CertChecker is a function type that will be used to check leaf certs against pinned trust
 type CertChecker func(leafCert *x509.Certificate, intCerts []*x509.Certificate) bool
 
 // NewTrustPinChecker returns a new certChecker function from a TrustPinConfig for a GUN
+// This prefers the most specific pinning to the least specific:
+// 1.  Cert ID - unique per repo
+// 2.  Key ID - multiple repos could have the same underlying canonical root private key
+// 3.  CA - multiple root private keys could have public certs signed by the same CA
+// 4.  TOFUS - pinning based on cache
 func NewTrustPinChecker(trustPinConfig TrustPinConfig, gun data.GUN, firstBootstrap bool) (CertChecker, error) {
 	t := trustPinChecker{gun: gun, config: trustPinConfig}
 	// Determine the mode, and if it's even valid
-	if pinnedCerts, ok := trustPinConfig.Certs[gun.String()]; ok {
+
+	// check if the GUN matches any cert pinning
+	pinnedCerts, ok := trustPinConfig.Certs[gun.String()]
+	if !ok {
+		pinnedCerts, ok = wildcardMatch(gun, trustPinConfig.Certs)
+	}
+	if ok {
 		logrus.Debugf("trust-pinning using Cert IDs")
 		t.pinnedCertIDs = pinnedCerts
 		return t.certsCheck, nil
 	}
-	var ok bool
-	t.pinnedCertIDs, ok = wildcardMatch(gun, trustPinConfig.Certs)
+
+	// check if the GUN matches any key ID pinning
+	pinnedKeys, ok := trustPinConfig.KeyIDs[gun.String()]
+	if !ok {
+		pinnedKeys, ok = wildcardMatch(gun, trustPinConfig.KeyIDs)
+	}
 	if ok {
-		return t.certsCheck, nil
+		logrus.Debugf("trust-pinning using Key IDs")
+		t.pinnedKeyIDs = pinnedKeys
+		return t.keyIDCheck, nil
 	}
 
 	if caFilepath, err := getPinnedCAFilepathByPrefix(gun, trustPinConfig); err == nil {
@@ -101,6 +122,20 @@ func (t trustPinChecker) certsCheck(leafCert *x509.Certificate, intCerts []*x509
 		return false
 	}
 	return utils.StrSliceContains(t.pinnedCertIDs, key.ID())
+}
+
+func (t trustPinChecker) keyIDCheck(leafCert *x509.Certificate, intCerts []*x509.Certificate) bool {
+	// we only care about the leaf cert for the canonical key ID
+	key, err := utils.CertBundleToKey(leafCert, nil)
+	if err != nil {
+		logrus.Debug("error creating cert bundle: ", err.Error())
+		return false
+	}
+	canonicalID, err := utils.CanonicalKeyID(key)
+	if err != nil {
+		logrus.Debug("error parsing certificate for public bytes")
+	}
+	return utils.StrSliceContains(t.pinnedKeyIDs, canonicalID)
 }
 
 func (t trustPinChecker) caCheck(leafCert *x509.Certificate, intCerts []*x509.Certificate) bool {
