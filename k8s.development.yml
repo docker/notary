@@ -1,0 +1,44 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: notaryserver
+spec:
+  selector:
+    app: notary
+  ports:
+  - protocol: TCP
+    port: 4443
+  type: NodePort
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: notaryserver
+  name: notaryserver
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: notary
+        name: notary
+    spec:
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+          - "notarysigner"
+      containers:
+      - image: dockersecurity/notary_autobuilds:server-latest
+        imagePullPolicy: Always
+        name: notaryserver
+        ports:
+        - containerPort: 4443
+          name: notaryserver
+      - image: dockersecurity/notary_autobuilds:signer-latest
+        imagePullPolicy: Always
+        name: notarysigner
+        ports:
+        - containerPort: 7899
+          name: notarysigner
+        
