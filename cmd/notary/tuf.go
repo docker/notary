@@ -832,7 +832,7 @@ func (ps passwordStore) Basic(u *url.URL) (string, string) {
 		logrus.Errorf("error processing password input: %s", err)
 		return "", ""
 	}
-	password := strings.TrimSpace(string(passphrase))
+	password := string(passphrase)
 
 	return username, password
 }

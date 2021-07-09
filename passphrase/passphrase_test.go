@@ -3,6 +3,7 @@ package passphrase
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -33,7 +34,7 @@ func TestGetPassphraseForUsingDelegationKey(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 
-	retriever := PromptRetrieverWithInOut(&in, &out, nil)
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
 
 	for i := 0; i < 3; i++ {
 		target := fmt.Sprintf("targets/level%d", i)
@@ -48,7 +49,7 @@ func TestGetPassphraseLimitsShortPassphrases(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 
-	retriever := PromptRetrieverWithInOut(&in, &out, nil)
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
 
 	repeatedShortPass := strings.Repeat("a\n", 22)
 	_, err := in.WriteString(repeatedShortPass)
@@ -64,7 +65,7 @@ func TestGetPassphraseLimitsMismatchingPassphrases(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 
-	retriever := PromptRetrieverWithInOut(&in, &out, nil)
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
 
 	repeatedShortPass := strings.Repeat("password\nmismatchingpass\n", 11)
 	_, err := in.WriteString(repeatedShortPass)
@@ -80,7 +81,7 @@ func TestGetPassphraseForCreatingDelegationKey(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 
-	retriever := PromptRetrieverWithInOut(&in, &out, nil)
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
 
 	_, err := in.WriteString("passphrase\npassphrase\n")
 	require.NoError(t, err)
@@ -102,13 +103,70 @@ func TestGetPassphraseForCreatingDelegationKey(t *testing.T) {
 	require.Equal(t, expectedText, lines)
 }
 
+// PromptRetrieverWithInOut by default requires passphrases to be 8 characters or more
+func TestGetPassphraseDefaultValidation(t *testing.T) {
+	var in bytes.Buffer
+	var out bytes.Buffer
+
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
+
+	_, err := in.WriteString("1234\n1234\n")
+	require.NoError(t, err)
+
+	_, _, err = retriever("repo/0123456789abcdef", "targets/a", true, 0)
+	require.Equal(t, err, ErrTooShort)
+
+	_, err = in.WriteString(" passphrase with leading and trailing whitespace \n\t   passphrase with leading and trailing whitespace    \n")
+	require.NoError(t, err)
+
+	_, _, err = retriever("repo/0123456789abcdef", "targets/a", true, 0)
+	require.NoError(t, err)
+}
+
+func TestGetPassphraseCustomValidation(t *testing.T) {
+	var in bytes.Buffer
+	var out bytes.Buffer
+
+	customVal := func(passphrase string) error {
+		if passphrase != "hello world" {
+			return errors.New("passphrase should be 'hello world'")
+		}
+		return nil
+	}
+
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, customVal)
+
+	_, err := in.WriteString("1234\n1234\n")
+	require.NoError(t, err)
+
+	_, _, err = retriever("repo/0123456789abcdef", "targets/a", true, 0)
+	require.EqualError(t, err, "passphrase should be 'hello world'")
+}
+
+func TestGetPassphraseEmptyValidation(t *testing.T) {
+	var in bytes.Buffer
+	var out bytes.Buffer
+
+	customVal := func(passphrase string) error {
+		return nil
+	}
+
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, customVal)
+
+	_, err := in.WriteString("    \n    \n")
+	require.NoError(t, err)
+
+	_, _, err = retriever("repo/0123456789abcdef", "targets/a", true, 0)
+	require.Equal(t, err, ErrEmpty)
+}
+
 // PromptRetrieverWithInOut, if asked for root, targets, snapshot, and delegation
 // passphrases in that order will cache each of the keys except for the delegation key
 func TestRolePromptingAndCaching(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 
-	retriever := PromptRetrieverWithInOut(&in, &out, nil)
+	retriever := PromptRetrieverWithInOut(&in, &out, nil, nil)
 
 	assertAskOnceForKey(t, &in, &out, retriever, "rootpassword", data.CanonicalRootRole.String())
 	assertAskOnceForKey(t, &in, &out, retriever, "targetspassword", data.CanonicalTargetsRole.String())
@@ -165,5 +223,5 @@ func TestGetPassphrase(t *testing.T) {
 	stdin := bufio.NewReader(&in)
 	passphrase, err := GetPassphrase(stdin)
 	require.NoError(t, err)
-	require.Equal(t, string(passphrase), "passphrase\n")
+	require.Equal(t, "passphrase", string(passphrase))
 }

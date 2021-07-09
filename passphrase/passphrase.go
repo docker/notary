@@ -4,6 +4,7 @@ package passphrase
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,9 @@ way to recover this key. You can find the key in your config directory.`
 )
 
 var (
+	// ErrEmpty is returned if the passphrase entered for a new key is empty, or white-space only
+	ErrEmpty = errors.New("Passphrase is empty")
+
 	// ErrTooShort is returned if the passphrase entered for a new key is
 	// below the minimum length
 	ErrTooShort = errors.New("Passphrase too short")
@@ -54,13 +58,14 @@ func PromptRetriever() notary.PassRetriever {
 			return "", false, ErrNoInput
 		}
 	}
-	return PromptRetrieverWithInOut(os.Stdin, os.Stdout, nil)
+	return PromptRetrieverWithInOut(os.Stdin, os.Stdout, nil, defaultPassValidator)
 }
 
 type boundRetriever struct {
 	in              io.Reader
 	out             io.Writer
 	aliasMap        map[string]string
+	validateFunc    notary.PassValidator
 	passphraseCache map[string]string
 }
 
@@ -128,7 +133,7 @@ func (br *boundRetriever) requestPassphrase(keyName, alias string, createNew boo
 		return "", false, err
 	}
 
-	retPass := strings.TrimSpace(string(passphrase))
+	retPass := string(passphrase)
 
 	if createNew {
 		err = br.verifyAndConfirmPassword(stdin, retPass, displayAlias, withID)
@@ -143,9 +148,12 @@ func (br *boundRetriever) requestPassphrase(keyName, alias string, createNew boo
 }
 
 func (br *boundRetriever) verifyAndConfirmPassword(stdin *bufio.Reader, retPass, displayAlias, withID string) error {
-	if len(retPass) < 8 {
-		fmt.Fprintln(br.out, "Passphrase is too short. Please use a password manager to generate and store a good random passphrase.")
-		return ErrTooShort
+	if retPass == "" {
+		return ErrEmpty
+	}
+	if err := br.validateFunc(retPass); err != nil {
+		fmt.Fprintf(br.out, "Passphrase is invalid: %s\n", err)
+		return err
 	}
 
 	fmt.Fprintf(br.out, "Repeat passphrase for new %s key%s: ", displayAlias, withID)
@@ -155,7 +163,7 @@ func (br *boundRetriever) verifyAndConfirmPassword(stdin *bufio.Reader, retPass,
 	if err != nil {
 		return err
 	}
-	confirmationStr := strings.TrimSpace(string(confirmation))
+	confirmationStr := string(confirmation)
 
 	if retPass != confirmationStr {
 		fmt.Fprintln(br.out, "Passphrases do not match. Please retry.")
@@ -168,16 +176,28 @@ func (br *boundRetriever) cachePassword(alias, retPass string) {
 	br.passphraseCache[alias] = retPass
 }
 
+func defaultPassValidator(passphrase string) error {
+	if len(passphrase) < 8 {
+		return ErrTooShort
+	}
+	return nil
+}
+
 // PromptRetrieverWithInOut returns a new Retriever which will provide a
 // prompt using the given in and out readers. The passphrase will be cached
 // such that subsequent prompts will produce the same passphrase.
 // aliasMap can be used to specify display names for TUF key aliases. If aliasMap
 // is nil, a sensible default will be used.
-func PromptRetrieverWithInOut(in io.Reader, out io.Writer, aliasMap map[string]string) notary.PassRetriever {
+func PromptRetrieverWithInOut(in io.Reader, out io.Writer, aliasMap map[string]string, validator notary.PassValidator) notary.PassRetriever {
+	if validator == nil {
+		validator = defaultPassValidator
+	}
+
 	bound := &boundRetriever{
 		in:              in,
 		out:             out,
 		aliasMap:        aliasMap,
+		validateFunc:    validator,
 		passphraseCache: make(map[string]string),
 	}
 
@@ -206,5 +226,5 @@ func GetPassphrase(in *bufio.Reader) ([]byte, error) {
 		passphrase, err = in.ReadBytes('\n')
 	}
 
-	return passphrase, err
+	return bytes.TrimSpace(passphrase), err
 }
