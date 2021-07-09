@@ -365,6 +365,8 @@ func (rdb RethinkDB) GetChanges(changeID string, pageSize int, filterName string
 	}
 
 	switch changeID {
+	case "":
+		return nil, ErrBadQuery{"must specify change ID parameter for rethinkdb backend"}
 	case "0", "-1":
 		lower = min
 		upper = max

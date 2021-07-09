@@ -177,3 +177,15 @@ func TestRethinkDBGetChanges(t *testing.T) {
 
 	testGetChanges(t, dbStore)
 }
+
+func TestRethinkDBGetChangesRequiresChangeID(t *testing.T) {
+	dbStore, cleanup := rethinkDBSetup(t)
+	defer cleanup()
+
+	blackoutTime = 0
+	// empty changeID
+	c, err := dbStore.GetChanges("", 10, "")
+	require.Error(t, err)
+	require.Equal(t, err, ErrBadQuery{"must specify change ID parameter for rethinkdb backend"})
+	require.Len(t, c, 0)
+}
