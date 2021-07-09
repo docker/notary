@@ -130,6 +130,19 @@ $ notary
 
 To build the server and signer, run `docker-compose build`.
 
+## Helm
+
+If you prefer to deploy with [Helm](https://helm.sh), this repo includes a chart in the [helm/](helm/) directory. Assuming you already have a target Kubernetes cluster with Helm/Tiller running, you can quickly launch a Notary service with `helm install -n release-name helm/`. With the default values, this chart will create a containerized mysql database, run the required migrations, and launch a single instance of a server an a single instance of a signer (with their respective service endpoints).
+
+For compatibility, the server is exposed **both** by an `Ingress`, and by a `Service` of `type: LoadBalancer`. Depending on Kubernetes distribution or configuration you're using, it may be easier to use one or the other. Also, if you're running any virtualized or containerized distribution (like [Minikube](https://github.com/kubernetes/minikube), or [k3d](https://github.com/rancher/k3d)), you might need to map host ports to the corresponding service ports (443 for the `Ingress` and 4443 by default on the `Service`).
+
+The chart's default [values.yaml](helm/values.yaml) can give you an idea of the configuration options. One useful setting is `storage.type`, which can be set to `mysql`, `postgres`, or `memory`. If it's set to memory, then the chart will not create a containerized database, and instead set the storage for both the server and the signer to memory. Also, `server.trust` is set to `remote` by default, which means the chart will spin up a signer and point the server there, but if `server.trust` is set to `local`, then no signer will be created (all settings will be ignored). You can combine both `storage.type: memory` and `server.trust: local`, to very quickly spin up a Notary endpoint you can immediately point your CLI to.
+
+### Note on TLS
+
+While this chart provides a way to automatically generate working TLS certificates for you, it is highly recommended that you manage your own (which you can also pass to this chart).
+
+If you are looking to deploy Notary in Kubernetes in production, you should make sure that your secrets are distributed properly and securely (with [KMS](https://aws.amazon.com/kms/), [Vault](https://www.vaultproject.io), etc.). You're also highly encouraged to use your own TLS certs, preferably created and distributed dynamically (like with [Let's Encrypt](https://letsencrypt.org)).
 ## License
 
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Ftheupdateframework%2Fnotary.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Ftheupdateframework%2Fnotary?ref=badge_large)

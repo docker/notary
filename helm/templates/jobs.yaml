@@ -1,0 +1,148 @@
+{{- if (and .Values.storage.enabled (not (eq .Values.storage.flavor "memory"))) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: notary-server-migrate
+  labels:
+    app.kubernetes.io/name: notary
+    app.kubernetes.io/component: notary-server-migrate
+spec:
+  completions: 1
+  parallelism: 1
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+        labels:
+          app.kubernetes.io/name: notary
+          app.kubernetes.io/component: notary-server-migrate
+    spec:
+      initContainers:
+      - command:
+        - /gomplate
+        - --left-delim
+        - '%%'
+        - --right-delim
+        - '%%'
+        - --in
+        - "{{ template "notary.serverdburl" . }}"
+        - --out
+        - /migrate-configuration/db-url
+        image: hairyhenderson/gomplate:v3
+        name: gomplate
+        env:
+        - name: PASSWORD
+          {{- if .Values.server.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: server-password
+              key: password
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.storageCredentials.passwordSecretName }}
+              key: {{ .Values.server.storageCredentials.passwordSecretKey }}
+          {{- end }}
+        volumeMounts:
+        - mountPath: /migrate-configuration
+          name: migrate-configuration
+      containers:
+      - command:
+        - sh
+        - -c
+        - /migrate -path=/migrations/server/{{ .Values.storage.flavor }} -database={{ .Values.storage.flavor }}://$(cat /migrate-configuration/db-url) up
+        image: migrate/migrate:{{ .Values.storage.migrateVersion }}
+        name: migrate
+        volumeMounts:
+        - mountPath: /migrations/server/{{ .Values.storage.flavor }}
+          name: migrations-server
+        - mountPath: /tls
+          name: tls
+          readOnly: true
+        - mountPath: /migrate-configuration
+          name: migrate-configuration
+      restartPolicy: OnFailure
+      volumes:
+      - configMap:
+          name: notary-migrations-server
+        name: migrations-server
+      - secret:
+          secretName: notary-tls
+        name: tls
+      - emptyDir: {}
+        name: migrate-configuration
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: notary-signer-migrate
+  labels:
+    app.kubernetes.io/name: notary
+    app.kubernetes.io/component: notary-signer-migrate
+spec:
+  completions: 1
+  parallelism: 1
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+        labels:
+          app.kubernetes.io/name: notary
+          app.kubernetes.io/component: notary-signer-migrate
+    spec:
+      initContainers:
+      - command:
+        - /gomplate
+        - --left-delim
+        - '%%'
+        - --right-delim
+        - '%%'
+        - --in
+        - "{{ template "notary.signerdburl" . }}"
+        - --out
+        - /migrate-configuration/db-url
+        image: hairyhenderson/gomplate:v3
+        name: gomplate
+        env:
+        - name: PASSWORD
+          {{- if .Values.signer.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: signer-password
+              key: password
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.signer.storageCredentials.passwordSecretName }}
+              key: {{ .Values.signer.storageCredentials.passwordSecretKey }}
+          {{- end }}
+        volumeMounts:
+        - mountPath: /migrate-configuration
+          name: migrate-configuration
+      containers:
+      - command:
+        - sh
+        - -c
+        - /migrate -path=/migrations/signer/{{ .Values.storage.flavor }} -database={{ .Values.storage.flavor }}://$(cat /migrate-configuration/db-url) up
+        image: migrate/migrate:{{ .Values.storage.migrateVersion }}
+        name: migrate
+        volumeMounts:
+        - mountPath: /migrations/signer/{{ .Values.storage.flavor }}
+          name: migrations-signer
+        - mountPath: /tls
+          name: tls
+          readOnly: true
+        - mountPath: /migrate-configuration
+          name: migrate-configuration
+      restartPolicy: OnFailure
+      volumes:
+      - configMap:
+          name: notary-migrations-signer
+        name: migrations-signer
+      - secret:
+          secretName: notary-tls
+        name: tls
+      - emptyDir: {}
+        name: migrate-configuration
+
+{{- end }}

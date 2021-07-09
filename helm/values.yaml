@@ -1,0 +1,265 @@
+ingress:
+  # When enabled, the chart will create an 'Ingress' object to expose the notary server externally.
+  enabled: true
+
+  # When tls is enabled, the chart will add a 'tls' section to the Ingress object,
+  # with the list of 'hosts' below.
+  tls:
+    enabled: true
+
+  # The list of hosts to add to the ingress 'rules', and optionally the 'tls' section, if
+  # tls.enabled is set to true.
+  hosts:
+  - localhost
+
+  # The path to use for routing traffic to the notary server service.
+  path: /
+
+  # A set of extra annotations to be added to the Ingress object.
+  annotations: null
+
+loadBalancer:
+  # Expose the notary server via a load balancer. Setting this to true doesn't necessarily disable
+  # the ingress.enabled setting, but there's usually no need to set them both to true.
+  enabled: true
+
+  # Sets the 'loadBalancerIP' field of the 'Service' object. Useful if running on local distributions, like minikube.
+  loadBalancerIP: null
+
+storage:
+
+  # If the storage layer is deployed on a remote database (like Amazon RDS) this should be set to 'false' and the
+  # chart will skip deploying the database containers.
+  enabled: true
+
+  # Defines the type of storage the persistence layer runs. It's used to decide how to configure and/or initialize
+  # the database (and launch it if running it in Kubernetes with remote.enabled set to false, and the values under storage.kubernetes).
+  # Valid values are 'mysql', 'postgres', or 'memory'.
+  # If set to 'memory', no db instance will be launched and both server and signer will use in-memory persistence.
+  flavor: mysql
+
+  # If provided string will be appended at the end of the databse url.
+  # This is useful for providing additional parameters to a postgres database, e.g. "?sslmode=disable"
+  additionalDbUrlParameters: null
+
+  # The Docker image used to run the storage containers
+  image: mariadb:10.1.28
+
+  # The size of the volume to be used by the database instance. Ignored if 'type: memory'.
+  pvcSize: 100Mi
+
+  # The version of the 'migrate' image to use for the init container. Ignored if 'type: memory'.
+  migrateVersion: v4.6.2
+
+  # The storage class name to use for the PersistentVolumeClaim. If unset, the 'storageClassName' won't be set and the PVC
+  # will use the cluster's default 'StorageClass'.
+  storageClass: null
+
+server:
+
+  # The number of server replicas to create
+  replicas: 3
+
+  # The version of the image to use for the server component.
+  version: server-0.6.1-2
+
+  # The port to expose the server component on. Keep in mind that this applies to the 'Service' object and won't
+  # be exposed externally unless you have 'loadBalancer.enabled: true'
+  port: 4443
+
+  # The list of GUN prefixes to pass to the 'repositories.gun_prefixes' field of the server configuration file.
+  # Add or remove prefixes as you require.
+  gunPrefixes:
+  - "docker.io/"
+  - "mydomain.com/"
+
+
+  # Set 'trust: local' if you don't want to spin up a signer instance. Otherwise, the remote signer service is made
+  # available at the 'hostname' and 'port' specified here.
+  trust:
+    type: remote
+    hostname: notary-signer
+    port: 7899
+
+  # The credentials configuration for server storage
+  storageCredentials:
+    user: server
+    password: null
+
+    # If 'password' is null, then a secret name and key to discover the database credentials must be provided
+    passwordSecretName: server-db-password
+    passwordSecretKey: password
+
+signer:
+
+  # The number of signer replicas to create
+  replicas: 3
+
+  # The version of the image to use for the signer component.
+  version: signer-0.6.1-2
+
+  # The port to expose the signer service on. This is just for the internal service, it's not exposed externally
+  # even if 'ingress.enabled: true' or loadBalancer.enabled: true'.
+  port: 7899
+
+  alias:
+
+    # This is the value passed to the 'storage.default_alias' field of the signer configuration file.
+    defaultAlias: alias
+
+    # A default alias passphrase to set the 'NOTARY_SIGNER_<DEFAULT_ALIAS>' environment variable to.
+    # If this value is set, the chart will create a Kubernetes secret called 'signer-alias' and set
+    # this secret there. If this is not set, the chart will require secret configured in aliasSecretName.
+    aliasPassphrase: null
+
+    # The name and key of the secret used to set the 'NOTARY_SIGNER_<DEFAULT_ALIAS>' environment variable to.
+    # This should be a pre-existing Kubernetes secret provided by you, this chart won't create it.
+    aliasSecretName: signer-alias
+    aliasSecretKey: passphrase
+
+  # The credentials configuration for server storage
+  storageCredentials:
+    user: signer
+    password: null
+
+    # If 'password' is null, then a secret name and key to discover the database credentials must be provided
+    passwordSecretName: signer-db-password
+    passwordSecretKey: password
+
+logging:
+  # The logging level to set the 'logging.level' field in both the notary and signer config files.
+  level: debug
+
+tls:
+  # If this is set to true, the template will use the certificates and keys provided, otherwise it will automatically
+  # generate self-signed certificates based on the parameters passed to the 'generated' map.
+  # If using custom certificates, they should be base64-encoded. And both the public certificate and the private key
+  # must be provided.
+  custom: false
+
+  # The CA that signed the server/signer certificates. It's assumed that the same CA is used for bother server
+  # and signer certificates.
+  # It doesn't need to strictly be a root CA, it can be an intermediate one.
+  rootCACert: null
+
+  # The public certificate and corresponding private key for the server.
+  server:
+    cert: null
+    key: null
+
+  # The public certificate and corresponding private key for the signer.
+  signer:
+    cert: null
+    key: null
+
+  # The CA that signed the server/signer database certificates. It's assumed that the same CA is used for bother server
+  # and signer database certificates.
+  # It doesn't need to strictly be a root CA, it can be an intermediate one.
+  database:
+    rootCACert: null
+
+    # The public certificate and corresponding private key for the server database.
+    server:
+      cert: null
+      key: null
+
+    # The public certificate and corresponding private key for the signer database.
+    signer:
+      cert: null
+      key: null
+
+  # If Helm auto-generates the certificates, it'll create a self-signed CA and sign certificates off that CA.
+  # The key of that root CA is thrown away, and only the public certificate is stored as a Kubernetes secret.
+  generated:
+
+    # The validity in days for the generated certificates.
+    # Note that rotating the certificates is outside of the scope of this chart!
+    validityDays: 365
+
+    server:
+      # The list of valid DNS host names that the server certificate will accept
+      dns:
+      - notary-server
+      - notaryserver
+
+    signer:
+      # The list of valid DNS host names that the signer certificate will accept
+      dns:
+      - notary-signer
+      - notarysigner
+
+    database:
+
+      server:
+        # The list of valid DNS host names that the server database certificate will accept
+        dns:
+        - postgresql
+        - mysql
+
+      signer:
+        # The list of valid DNS host names that the signer database certificate will accept
+        dns:
+        - postgresql
+        - mysql
+
+authentication:
+
+  # Disabled by default
+  enabled: false
+
+  # As of version 0.6.1, Notary only supports token authentication
+  type: "token"
+
+  # Deploying the authentication server and configuring it (including the signing certificate) is outside of the scope
+  # of this chart, but you can set this value to the public signing certificate (base64-encoded) and it'll get injected
+  # in the same Secret (notary-tls) as the rest of the TLS certificates (and mounted on the server pods).
+  authSigningBundle: null
+
+  # These options are documented here (https://github.com/docker/distribution/blob/master/docs/configuration.md#token),
+  # and should match the settings for the authentication server you point to.
+  options:
+    realm: "https://my.auth.com/token"
+    service: "Notary"
+    issuer: "my.auth.com"
+    rootcertbundle: "/tls/auth.crt"
+    autoredirect: false
+
+caching:
+
+  # Disabled by default
+  enabled: true
+
+  # These correspond to the options documented here (https://github.com/theupdateframework/notary/blob/master/docs/reference/server-config.md#caching-section-optional)
+  currentMetadata: 300
+  consistentMetadata: 31536000
+
+affinity:
+  # If 'true', the chart will enable 'affinity' options for both the server and signer deployments
+  enabled: false
+
+  # The options are "pod-anti" to enable podAntiAffinity, or "node" to enable nodeAffinity (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/)
+  mode: pod-anti
+
+  # If required set to 'true', the affinity will be set to requiredDuringSchedulingIgnoredDuringExecution,
+  # otherwise it will be set to preferredDuringSchedulingIgnoredDuringExecution.
+  required: false
+
+  # The topology key to be used for podAntiAffinity. Ignored if mode is "node"
+  # E.g. use topologyKey: kubernetes.io/hostname to spread the replicas across different hosts,
+  # or topologyKey: failure-domain.beta.kubernetes.io/zone to spread across zones.
+  # Keep in mind that these keys depend on how your cluster is provisioned and they're not standard
+  # across providers.
+  topologyKey: kubernetes.io/hostname
+
+  # The label to be used for node affinity. Ignored if mode is "pod-anti".
+  nodeSelectorKey: null
+
+  # The list of allowed values for the nodeSelectorKey. Ignored if mode is "pod-anti".
+  nodeSelectorValues: []
+
+  # The operator to be used in conjunction with nodeSelectorKey and nodeSelectorValues.
+  # E.g. use nodeSelectorKey: kubernetes.io/role and nodeSelectorValues: ["master"] to only schedule pods on masters,
+  # or nodeSelectorKey: kubernetes.io/os and nodeSelectorValues: ["linux"] to only schedule pods on Linux hosts.
+  # Keep in mind that these labels depend on how your cluster is provisioned and they're not standard
+  # across providers.
+  nodeSelectorOperator: In

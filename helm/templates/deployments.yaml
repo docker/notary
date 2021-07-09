@@ -1,0 +1,371 @@
+{{- if (and .Values.storage.enabled (not (eq .Values.storage.flavor "memory"))) }}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: notary
+    app.kubernetes.io/component: notary-db
+  name: notary-db
+spec:
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: notary
+        app.kubernetes.io/component: notary-db
+    spec:
+      initContainers:
+      - command:
+        - /gomplate
+        - --left-delim
+        - '%%'
+        - --right-delim
+        - '%%'
+        - --input-dir
+        - /sql-init-templates
+        - --output-dir
+        - /docker-entrypoint-initdb.d
+        image: hairyhenderson/gomplate:v3
+        name: gomplate
+        env:
+        - name: SERVERPASSWORD
+          {{- if .Values.server.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: server-password
+              key: password
+              optional: false
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.storageCredentials.passwordSecretName }}
+              key: {{ .Values.server.storageCredentials.passwordSecretKey }}
+              optional: false
+          {{- end }}
+        - name: SIGNERPASSWORD
+          {{- if .Values.signer.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: signer-password
+              key: password
+              optional: false
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.signer.storageCredentials.passwordSecretName }}
+              key: {{ .Values.signer.storageCredentials.passwordSecretKey }}
+              optional: false
+          {{- end }}
+        volumeMounts:
+        - mountPath: /docker-entrypoint-initdb.d
+          name: sql-init
+        - mountPath: /sql-init-templates
+          name: notarysql
+      containers:
+      {{- if eq .Values.storage.flavor "mysql" }}
+      - args:
+        - mysqld
+        - --innodb_file_per_table
+        env:
+        - name: MYSQL_RANDOM_ROOT_PASSWORD
+          value: "yes"
+        image: {{ .Values.storage.image }}
+        name: mysql
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: notary-data
+      {{- else if eq .Values.storage.flavor "postgres" }}
+      - env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        image: {{ .Values.storage.image }}
+        name: postgres
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data/pgdata
+          name: notary-data
+      {{- end }}
+        - mountPath: /docker-entrypoint-initdb.d
+          name: sql-init
+        - mountPath: /sql-init-templates
+          name: notarysql
+      volumes:
+      - name: notary-data
+        persistentVolumeClaim:
+          claimName: notary-data
+      - name: notarysql
+        configMap:
+          name: notarysql
+      - name: sql-init
+        emptyDir: {}
+
+---
+
+{{- end }}
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: notary
+    app.kubernetes.io/component: notary-server
+  name: notary-server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: notary
+        app.kubernetes.io/component: notary-server
+    spec:
+      {{- if .Values.affinity.enabled }}
+      affinity:
+        {{- if eq .Values.affinity.mode "pod-anti" }}
+        podAntiAffinity:
+          {{- if .Values.affinity.required }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: {{ .Values.affinity.topologyKey }}
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - notary-server
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: {{ .Values.affinity.topologyKey }}
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - notary-server
+          {{- end }}
+        {{- else if eq .Values.affinity.mode "node" }}
+        nodeAffinity:
+          {{- if .Values.affinity.required }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.affinity.nodeSelectorKey }}
+                operator: {{ .Values.affinity.nodeSelectorOperator }}
+                values: {{ .Values.affinity.nodeSelectorValues }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: {{ .Values.affinity.nodeSelectorKey }}
+                operator: {{ .Values.affinity.nodeSelectorOperator }}
+                values: {{ .Values.affinity.nodeSelectorValues }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+      - command:
+        - /gomplate
+        - --left-delim
+        - '%%'
+        - --right-delim
+        - '%%'
+        - --input-dir
+        - /config-template
+        - --output-dir
+        - /config
+        image: hairyhenderson/gomplate:v3
+        name: gomplate
+        env:
+        - name: PASSWORD
+          {{- if .Values.server.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: server-password
+              key: password
+              optional: false
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.storageCredentials.passwordSecretName }}
+              key: {{ .Values.server.storageCredentials.passwordSecretKey }}
+              optional: false
+          {{- end }}
+        volumeMounts:
+        - mountPath: /config
+          name: config-rendered
+        - mountPath: /config-template
+          name: config-template
+      containers:
+      - command:
+        - notary-server
+        - -config=/config/server-config.json
+        image: notary:{{ .Values.server.version }}
+        name: server
+        ports:
+        - containerPort: {{ .Values.server.port }}
+          name: https
+        volumeMounts:
+        - mountPath: /config
+          name: config-rendered
+        - mountPath: /tls
+          name: tls
+      volumes:
+      - configMap:
+          name: notary-config
+        name: config-template
+      - secret:
+          secretName: notary-tls
+        name: tls
+      - emptyDir: {}
+        name: config-rendered
+
+{{- if eq .Values.server.trust.type "remote" }}
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: notary
+    app.kubernetes.io/component: notary-signer
+  name: notary-signer
+spec:
+  replicas: {{ .Values.signer.replicas }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: notary
+        app.kubernetes.io/component: notary-signer
+    spec:
+      {{- if .Values.affinity.enabled }}
+      affinity:
+        {{- if eq .Values.affinity.mode "pod-anti" }}
+        podAntiAffinity:
+          {{- if .Values.affinity.required }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: {{ .Values.affinity.topologyKey }}
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - notary-signer
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: {{ .Values.affinity.topologyKey }}
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - notary-signer
+          {{- end }}
+        {{- else if eq .Values.affinity.mode "node" }}
+        nodeAffinity:
+          {{- if .Values.affinity.required }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.affinity.nodeSelectorKey }}
+                operator: {{ .Values.affinity.nodeSelectorOperator }}
+                values: {{ .Values.affinity.nodeSelectorValues }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: {{ .Values.affinity.nodeSelectorKey }}
+                operator: {{ .Values.affinity.nodeSelectorOperator }}
+                values: {{ .Values.affinity.nodeSelectorValues }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+      - command:
+        - /gomplate
+        - --left-delim
+        - '%%'
+        - --right-delim
+        - '%%'
+        - --input-dir
+        - /config-template
+        - --output-dir
+        - /config
+        image: hairyhenderson/gomplate:v3
+        name: gomplate
+        env:
+        - name: PASSWORD
+          {{- if .Values.signer.storageCredentials.password }}
+          valueFrom:
+            secretKeyRef:
+              name: signer-password
+              key: password
+              optional: false
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.signer.storageCredentials.passwordSecretName }}
+              key: {{ .Values.signer.storageCredentials.passwordSecretKey }}
+              optional: false
+          {{- end }}
+        volumeMounts:
+        - mountPath: /config
+          name: config-rendered
+        - mountPath: /config-template
+          name: config-template
+      containers:
+      - command:
+        - notary-signer
+        - -config=/config/signer-config.json
+        image: notary:{{ .Values.signer.version }}
+        name: signer
+        env:
+        - name: NOTARY_SIGNER_{{ .Values.signer.alias.defaultAlias | upper }}
+          {{- if .Values.signer.alias.aliasPassphrase }}
+          valueFrom:
+            secretKeyRef:
+              name: signer-alias
+              key: alias-secret
+              optional: false
+          {{- else }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.signer.alias.aliasSecretName }}
+              key: {{ .Values.signer.alias.aliasSecretKey }}
+              optional: false
+          {{- end }}
+        ports:
+        - containerPort: {{ .Values.signer.port }}
+          name: https
+        volumeMounts:
+        - mountPath: /config
+          name: config-rendered
+        - mountPath: /tls
+          name: tls
+      volumes:
+      - configMap:
+          name: notary-config
+        name: config-template
+      - secret:
+          secretName: notary-tls
+        name: tls
+      - emptyDir: {}
+        name: config-rendered
+
+{{- end }}

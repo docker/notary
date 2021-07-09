@@ -1,0 +1,4 @@
+apiVersion: v1
+description: Notary
+name: notary
+version: 0.0.0

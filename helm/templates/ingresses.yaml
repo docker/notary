@@ -1,0 +1,27 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: notary-ingress
+  {{- if .Values.ingress.annotations }}
+  annotations:
+{{ .Values.ingress.annotations | toYaml | trim | indent 4 }}
+  {{- end }}
+spec:
+  rules:
+  {{- range $host := .Values.ingress.hosts }}
+  - host: {{ $host }}
+    http:
+      paths:
+      - backend:
+          serviceName: notary-server
+          servicePort: https
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  {{- range $host := .Values.ingress.hosts }}
+  tls:
+    - hosts:
+        - {{ $host }}
+  {{- end }}
+  {{- end }}
+{{- end }}

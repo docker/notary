@@ -1,0 +1,17 @@
+{{- if (and .Values.storage.enabled (not (eq .Values.storage.flavor "memory"))) }}
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: notary-data
+spec:
+  {{- if .Values.storage.className }}
+  storageClassName: {{ .Values.storage.className }}
+  {{- end }}
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.pvcSize }}
+
+{{- end }}

@@ -1,0 +1,128 @@
+{{- if (and .Values.storage.enabled (not (eq .Values.storage.flavor "memory"))) }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notarysql
+data:
+  {{- if eq .Values.storage.flavor "mysql" }}
+  {{- range $path, $bytes := .Files.Glob "sql/mysql-initdb.d/**" }}
+  {{ base $path }}: |
+{{ tpl ($.Files.Get $path) $ | indent 4 }}
+  {{- end }}
+  {{- else if eq .Values.storage.flavor "postgres" }}
+  {{- range $path, $bytes := .Files.Glob "sql/postgresql-initdb.d/**" }}
+  {{ base $path }}: |
+{{ tpl ($.Files.Get $path) $ | indent 4 }}
+  {{- end }}
+  {{- end }}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notary-migrations-server
+data:
+  {{- if eq .Values.storage.flavor "mysql" }}
+  {{- range $path, $bytes := .Files.Glob "migrations/server/mysql/**" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+  {{- else if eq .Values.storage.flavor "postgres" }}
+  {{- range $path, $bytes := .Files.Glob "migrations/server/postgresql/**" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+  {{- end }}
+
+{{- if eq .Values.server.trust.type "remote" }}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notary-migrations-signer
+data:
+  {{- if eq .Values.storage.flavor "mysql" }}
+  {{- range $path, $bytes := .Files.Glob "migrations/signer/mysql/**" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+  {{- else if eq .Values.storage.flavor "postgres" }}
+  {{- range $path, $bytes := .Files.Glob "migrations/signer/postgresql/**" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+  {{- end }}
+
+{{- end }}
+
+---
+
+{{- end }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notary-config
+data:
+  server-config.json: |
+    {
+      "server": {
+        "http_addr": ":{{ .Values.server.port }}",
+        "tls_key_file": "/tls/notary-server.key",
+        "tls_cert_file": "/tls/notary-server.crt"
+      },
+      "trust_service": {
+        "type": "{{ .Values.server.trust.type }}",
+        "hostname": "{{ .Values.server.trust.hostname }}",
+        "port": "{{ .Values.server.trust.port }}",
+        "tls_ca_file": "/tls/root-ca.crt",
+        "key_algorithm": "ecdsa",
+        "tls_client_cert": "/tls/notary-server.crt",
+        "tls_client_key": "/tls/notary-server.key"
+      },
+      "logging": {
+        "level": "{{ .Values.logging.level }}"
+      },
+      "storage": {
+        "backend": "{{ .Values.storage.flavor }}",
+        "db_url": "{{ eq .Values.storage.flavor "postgres" | ternary "postgres://" "" }}{{ template "notary.serverdburl" . }}"
+      },
+      {{- if .Values.authentication.enabled }}
+      "authentication": {
+        "type": "{{ .Values.authentication.type }}",
+        "options": {{ toPrettyJson .Values.authentication.options | indent 8 }}
+      },
+      {{- end }}
+      {{- if .Values.caching.enabled }}
+      "caching": {
+        "max_age": {
+          "current_metadata": "{{ int .Values.caching.currentMetadata }}",
+          "consistent_metadata": "{{ int .Values.caching.consistentMetadata }}"
+        }
+      },
+      {{- end }}
+      "repositories": {
+        "gun_prefixes": {{ .Values.server.gunPrefixes | toJson }}
+      }
+    }
+  signer-config.json: |
+    {
+      "server": {
+        "grpc_addr": ":{{ .Values.signer.port }}",
+        "tls_cert_file": "/tls/notary-signer.crt",
+        "tls_key_file": "/tls/notary-signer.key",
+        "client_ca_file": "/tls/root-ca.crt"
+      },
+      "logging": {
+        "level": "{{ .Values.logging.level }}"
+      },
+      "storage": {
+        "backend": "{{ .Values.storage.flavor }}",
+        "db_url": "{{ eq .Values.storage.flavor "postgres" | ternary "postgres://" "" }}{{ template "notary.signerdburl" . }}",
+        "default_alias": "{{ .Values.signer.alias.defaultAlias }}"
+      }
+    }
