@@ -992,10 +992,10 @@ func TestAllNearExpiry(t *testing.T) {
 	b := bytes.NewBuffer(nil)
 	log.SetOutput(b)
 	warnRolesNearExpiry(repo)
-	require.Contains(t, b.String(), "targets metadata is nearing expiry, you should re-sign the role metadata", "targets should show near expiry")
-	require.Contains(t, b.String(), "targets/exp metadata is nearing expiry, you should re-sign the role metadata", "targets/exp should show near expiry")
-	require.Contains(t, b.String(), "root is nearing expiry, you should re-sign the role metadata", "Root should show near expiry")
-	require.Contains(t, b.String(), "snapshot is nearing expiry, you should re-sign the role metadata", "Snapshot should show near expiry")
+	require.Contains(t, b.String(), "targets metadata expires on", "targets should show expiration")
+	require.Contains(t, b.String(), "targets/exp metadata expires on", "targets/exp should show expiration")
+	require.Contains(t, b.String(), "root expires on", "Root should show expiration")
+	require.Contains(t, b.String(), "snapshot expires on", "Snapshot should show expiration")
 	require.NotContains(t, b.String(), "timestamp", "there should be no logrus warnings pertaining to timestamp")
 }
 

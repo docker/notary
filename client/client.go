@@ -652,7 +652,7 @@ func signRootIfNecessary(updates map[data.RoleName][]byte, repo *tuf.Repo, extra
 	if len(extraSigningKeys) > 0 {
 		repo.Root.Dirty = true
 	}
-	if nearExpiry(repo.Root.Signed.SignedCommon) || repo.Root.Dirty {
+	if nearExpiry(repo.Root.Signed.SignedCommon) != "" || repo.Root.Dirty {
 		rootJSON, err := serializeCanonicalRole(repo, data.CanonicalRootRole, extraSigningKeys)
 		if err != nil {
 			return err

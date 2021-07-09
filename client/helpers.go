@@ -193,27 +193,31 @@ func applyRootRoleChange(repo *tuf.Repo, c changelist.Change) error {
 	return nil
 }
 
-func nearExpiry(r data.SignedCommon) bool {
+func nearExpiry(r data.SignedCommon) string {
 	plus6mo := time.Now().AddDate(0, 6, 0)
-	return r.Expires.Before(plus6mo)
+	if r.Expires.Before(plus6mo) {
+		return r.Expires.Format("2006-01-02")
+	}
+
+	return ""
 }
 
 func warnRolesNearExpiry(r *tuf.Repo) {
 	//get every role and its respective signed common and call nearExpiry on it
 	//Root check
-	if nearExpiry(r.Root.Signed.SignedCommon) {
-		logrus.Warn("root is nearing expiry, you should re-sign the role metadata")
+	if expires := nearExpiry(r.Root.Signed.SignedCommon); expires != "" {
+		logrus.Warn("root expires on ", expires, " . You should re-sign the role metadata")
 	}
 	//Targets and delegations check
 	for role, signedTOrD := range r.Targets {
 		//signedTOrD is of type *data.SignedTargets
-		if nearExpiry(signedTOrD.Signed.SignedCommon) {
-			logrus.Warn(role, " metadata is nearing expiry, you should re-sign the role metadata")
+		if expires := nearExpiry(signedTOrD.Signed.SignedCommon); expires != "" {
+			logrus.Warn(role, " metadata expires on ", expires, ". You should re-sign the role metadata")
 		}
 	}
 	//Snapshot check
-	if nearExpiry(r.Snapshot.Signed.SignedCommon) {
-		logrus.Warn("snapshot is nearing expiry, you should re-sign the role metadata")
+	if expires := nearExpiry(r.Snapshot.Signed.SignedCommon); expires != "" {
+		logrus.Warn("snapshot expires on ", expires, ". You should re-sign the role metadata")
 	}
 	//do not need to worry about Timestamp, notary signer will re-sign with the timestamp key
 }
