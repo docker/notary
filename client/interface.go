@@ -73,6 +73,7 @@ type Repository interface {
 	// Publish pushes the local changes in signed material to the remote notary-server
 	// Conceptually it performs an operation similar to a `git rebase`
 	Publish() error
+	Update(forWrite bool) error
 
 	// ----- Target Operations -----
 
