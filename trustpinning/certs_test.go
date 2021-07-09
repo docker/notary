@@ -74,7 +74,7 @@ func sampleCertChain(t *testing.T) *certChain {
 		// Create a simple CSR for the CA using the default CA validator and policy
 		req := &csr.CertificateRequest{
 			CN:         "docker.io/notary/root",
-			KeyRequest: csr.NewBasicKeyRequest(),
+			KeyRequest: csr.NewKeyRequest(),
 			CA:         &csr.CAConfig{},
 		}
 
