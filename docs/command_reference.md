@@ -23,7 +23,7 @@ weight=99
     - **Snapshot**:  The snapshot role signs a metadata file that provides information about the latest version of all of the other metadata on the trusted collection (excluding the timestamp file, discussed below).
     - **Timestamp**:  To prevent an adversary from replaying an out-of-date signed metadata file whose signature has not yet expired, an automated process periodically signs a timestamped statement containing the hash of the snapshot file.
 
-To read further about the framework Notary implements, check out [The Update Framework](https://github.com/theupdateframework/tuf/blob/develop/docs/tuf-spec.txt)
+To read further about the framework Notary implements, check out [The Update Framework](https://github.com/theupdateframework/specification/blob/master/tuf-spec.md)
 
 ## Command Reference
 
@@ -35,7 +35,7 @@ a private key has been compromised.
 
 When using the Notary CLI client you need to specify where the URL of the Notary server
 you want to communicate is with the `-s` flag, and where to store the private keys and cache for
-the CLI client with the `-d` flag.  There are also fields in the [client configuration](/reference/client-config.md) to set these variables.
+the CLI client with the `-d` flag.  There are also fields in the [client configuration](/docs/reference/client-config.md) to set these variables.
 
 ```bash
 # Create an alias to always have the notary client talking to the right notary server
