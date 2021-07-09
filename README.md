@@ -108,6 +108,24 @@ git commit -m "Upgraded github.com/spf13/viper"
 
 The `buildscripts/circle-validate-vendor.sh` runs `go mod tidy` and `go mod vendor` using the given version of Go to prevent differences if you are for example running on a different version of Go.
 
+## Run in a sandbox
+
+To run your experiments in a completely isolated sandbox you could leverage the `docker-compose.sandbox.yml`. To build the sandbox image ensure to run `make cross` first (the image needs a linux build).
+
+Now you can run:
+
+```bash
+docker-compose -f docker-compose.sandbox.yml up -d --build
+$ docker-compose -f docker-compose.sandbox.yml exec sandbox sh
+/ # which notary
+/usr/local/bin/notary
+/ # which docker
+/usr/local/bin/docker
+/ #
+```
+
+From within the sandbox container you can play with notary and `docker trust` without worrying about messing up your local environment.
+
 ## Building Notary
 
 Note that Notary's [latest stable release](https://github.com/theupdateframework/notary/releases) is at the head of the
