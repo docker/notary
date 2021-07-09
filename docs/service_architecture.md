@@ -160,8 +160,8 @@ discusses how our architecture is designed to deal with compromises.
 ### Notary server compromise
 
 In the event of a Notary server compromise, an attacker would have direct access to
-the metadata stored in the database as well as well as access to the credentials
-used to communicate with Notary signer, and therefore, access to arbitrary signing
+the metadata stored in the database as well as access to the credentials used to
+communicate with Notary signer, and therefore, access to arbitrary signing
 operations with any key the Signer holds.
 
 - **Denial of Service** - An attacker could reject client requests and corrupt
