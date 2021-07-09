@@ -6,10 +6,10 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"path"
 	"strings"
 	"time"
@@ -212,23 +212,18 @@ func (f FileMeta) Equals(o FileMeta) bool {
 	return bytes.Equal(fBytes, oBytes)
 }
 
-// CheckHashes verifies all the checksums specified by the "hashes" of the payload.
-func CheckHashes(payload []byte, name string, hashes Hashes) error {
+func checkHashes(s *StreamingHasher, name string, hashes Hashes) error {
 	cnt := 0
 
 	// k, v indicate the hash algorithm and the corresponding value
 	for k, v := range hashes {
 		switch k {
-		case notary.SHA256:
-			checksum := sha256.Sum256(payload)
-			if subtle.ConstantTimeCompare(checksum[:], v) == 0 {
-				return ErrMismatchedChecksum{alg: notary.SHA256, name: name, expected: hex.EncodeToString(v)}
-			}
-			cnt++
-		case notary.SHA512:
-			checksum := sha512.Sum512(payload)
-			if subtle.ConstantTimeCompare(checksum[:], v) == 0 {
-				return ErrMismatchedChecksum{alg: notary.SHA512, name: name, expected: hex.EncodeToString(v)}
+		case notary.SHA256, notary.SHA512:
+			// skipping the boolean check, because all internal usages ensure that the correct
+			// hash algorithms are produced
+			checksum, _ := s.GetChecksum(k)
+			if subtle.ConstantTimeCompare(checksum, v) == 0 {
+				return ErrMismatchedChecksum{alg: k, name: name, expected: hex.EncodeToString(v)}
 			}
 			cnt++
 		}
@@ -239,6 +234,100 @@ func CheckHashes(payload []byte, name string, hashes Hashes) error {
 	}
 
 	return nil
+}
+
+// CheckHashes verifies all the checksums specified by the "hashes" of the payload.
+func CheckHashes(payload []byte, name string, hashes Hashes) error {
+	var algos []string
+	for algo := range hashes {
+		switch algo {
+		case notary.SHA256, notary.SHA512:
+			algos = append(algos, algo)
+		}
+	}
+	s, err := NewStreamingHasher(algos...)
+	if err != nil {
+		return err
+	}
+	if err := s.Write(payload); err != nil {
+		return err
+	}
+	return checkHashes(s, name, hashes)
+}
+
+// StreamingHasher reads data in blocks, and builds the notary-supported checksums for the data.
+// At any time, the running checksum can be compared with a Hashes object to make sure that the data validates.
+type StreamingHasher struct {
+	size   int64
+	hashes map[string]hash.Hash
+}
+
+// NewStreamingHasher returns a StreamingHasher object that will produce hashes with the given hash algorithms
+func NewStreamingHasher(hashAlgos ...string) (*StreamingHasher, error) {
+	m := make(map[string]hash.Hash)
+	for _, algo := range hashAlgos {
+		switch algo {
+		case notary.SHA256:
+			m[algo] = sha256.New()
+		case notary.SHA512:
+			m[algo] = sha512.New()
+		default:
+			return nil, fmt.Errorf("unknown hash algorithm: %s", algo)
+		}
+	}
+	return &StreamingHasher{hashes: m}, nil
+}
+
+// Write checksums a piece of data at a time
+func (s *StreamingHasher) Write(data []byte) error {
+	for _, hasher := range s.hashes {
+		if n, err := hasher.Write(data); err != nil {
+			return err
+		} else if n != len(data) {
+			return errors.New("was unable to hash all of the data")
+		}
+	}
+	s.size += int64(len(data))
+	return nil
+}
+
+// WriteAll reads everything from the reader in small chunks
+func (s *StreamingHasher) WriteAll(r io.Reader) error {
+	// read in 4K chunks
+	chunkSize := 4 << 10
+	buf := make([]byte, 0, chunkSize)
+	for {
+		n, err := r.Read(buf[:chunkSize])
+		buf = buf[:n]
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("could not perform streaming checksum: %v", err)
+		}
+		if err := s.Write(buf); err != nil {
+			return err
+		}
+	}
+}
+
+// GetChecksum returns the checksum for a particular algorithm
+func (s *StreamingHasher) GetChecksum(algo string) ([]byte, bool) {
+	hasher, ok := s.hashes[algo]
+	if !ok {
+		return nil, ok
+	}
+	return hasher.Sum(nil), true
+}
+
+// CheckHashes compares the checksum of the already written data to the provided hashes
+func (s *StreamingHasher) CheckHashes(name string, hashes Hashes) error {
+	return checkHashes(s, name, hashes)
+}
+
+// Size returns the length of the data read so far
+func (s *StreamingHasher) Size() int64 {
+	return s.size
 }
 
 // CompareMultiHashes verifies that the two Hashes passed in can represent the same data.
@@ -308,27 +397,16 @@ func NewFileMeta(r io.Reader, hashAlgorithms ...string) (FileMeta, error) {
 	if len(hashAlgorithms) == 0 {
 		hashAlgorithms = []string{defaultHashAlgorithm}
 	}
-	hashes := make(map[string]hash.Hash, len(hashAlgorithms))
-	for _, hashAlgorithm := range hashAlgorithms {
-		var h hash.Hash
-		switch hashAlgorithm {
-		case notary.SHA256:
-			h = sha256.New()
-		case notary.SHA512:
-			h = sha512.New()
-		default:
-			return FileMeta{}, fmt.Errorf("Unknown hash algorithm: %s", hashAlgorithm)
-		}
-		hashes[hashAlgorithm] = h
-		r = io.TeeReader(r, h)
-	}
-	n, err := io.Copy(ioutil.Discard, r)
+	s, err := NewStreamingHasher(hashAlgorithms...)
 	if err != nil {
 		return FileMeta{}, err
 	}
-	m := FileMeta{Length: n, Hashes: make(Hashes, len(hashes))}
-	for hashAlgorithm, h := range hashes {
-		m.Hashes[hashAlgorithm] = h.Sum(nil)
+	if err := s.WriteAll(r); err != nil {
+		return FileMeta{}, err
+	}
+	m := FileMeta{Length: s.Size(), Hashes: make(Hashes, len(hashAlgorithms))}
+	for _, hashAlgorithm := range hashAlgorithms {
+		m.Hashes[hashAlgorithm], _ = s.GetChecksum(hashAlgorithm)
 	}
 	return m, nil
 }

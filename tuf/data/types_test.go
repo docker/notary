@@ -56,89 +56,109 @@ func TestSignatureUnmarshalJSON(t *testing.T) {
 	require.Equal(t, sig.Method.String(), "rsa")
 }
 
+// Tests CheckHashes and StreamingHashChecker.CheckHashes
 func TestCheckHashes(t *testing.T) {
 	var err error
 	raw := []byte("Bumblebee")
 
-	// Since only provide an un-supported hash algorithm here,
-	// it should be considered as fail.
-	unSupported := make(Hashes)
-	unSupported["Arthas"] = []byte("is past away.")
-	err = CheckHashes(raw, "metaName1", unSupported)
-	require.Error(t, err)
-	missingMeta, ok := err.(ErrMissingMeta)
-	require.True(t, ok)
-	require.EqualValues(t, "metaName1", missingMeta.Role)
+	checkHashes := func(name string, hashes Hashes) error {
+		return CheckHashes(raw, name, hashes)
+	}
+	// ensure that writing in chunks, etc. works
+	s1, err := NewStreamingHasher(notary.SHA256, notary.SHA512)
+	require.NoError(t, err)
+	s1.Write(raw)
+	s2, err := NewStreamingHasher(notary.SHA256, notary.SHA512)
+	require.NoError(t, err)
+	s2.Write(raw[0:2])
+	s2.Write(raw[2:])
+	s3, err := NewStreamingHasher(notary.SHA256, notary.SHA512)
+	require.NoError(t, err)
+	require.NoError(t, s3.WriteAll(bytes.NewBuffer(raw)))
 
-	// Expected to fail since there is no checksum at all.
-	hashes := make(Hashes)
-	err = CheckHashes(raw, "metaName2", hashes)
-	require.Error(t, err)
-	missingMeta, ok = err.(ErrMissingMeta)
-	require.True(t, ok)
-	require.EqualValues(t, "metaName2", missingMeta.Role)
+	for _, checkHashesFunc := range []func(string, Hashes) error{
+		checkHashes, s1.CheckHashes, s2.CheckHashes, s3.CheckHashes,
+	} {
+		// Since only provide an un-supported hash algorithm here,
+		// it should be considered as fail.
+		unSupported := make(Hashes)
+		unSupported["Arthas"] = []byte("is past away.")
+		err = checkHashesFunc("metaName1", unSupported)
+		require.Error(t, err)
+		missingMeta, ok := err.(ErrMissingMeta)
+		require.True(t, ok)
+		require.EqualValues(t, "metaName1", missingMeta.Role)
 
-	// The most standard one.
-	hashes[notary.SHA256], err = hex.DecodeString("d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
-	require.NoError(t, err)
-	hashes[notary.SHA512], err = hex.DecodeString("f2330f50d0f3ee56cf0d7f66aad8205e0cb9972c323208ffaa914ef7b3c240ae4774b5bbd1db2ce226ee967cfa9058173a853944f9b44e2e08abca385e2b7ed4")
-	require.NoError(t, err)
-	err = CheckHashes(raw, "meta", hashes)
-	require.NoError(t, err)
+		// Expected to fail since there is no checksum at all.
+		hashes := make(Hashes)
+		err = checkHashesFunc("metaName2", hashes)
+		require.Error(t, err)
+		missingMeta, ok = err.(ErrMissingMeta)
+		require.True(t, ok)
+		require.EqualValues(t, "metaName2", missingMeta.Role)
 
-	// Expected as success since there are already supported hash here,
-	// just ignore the unsupported one.
-	hashes["Saar"] = []byte("survives again in CTM.")
-	err = CheckHashes(raw, "meta", hashes)
-	require.NoError(t, err)
+		// The most standard one.
+		hashes[notary.SHA256], err = hex.DecodeString("d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
+		require.NoError(t, err)
+		hashes[notary.SHA512], err = hex.DecodeString("f2330f50d0f3ee56cf0d7f66aad8205e0cb9972c323208ffaa914ef7b3c240ae4774b5bbd1db2ce226ee967cfa9058173a853944f9b44e2e08abca385e2b7ed4")
+		require.NoError(t, err)
+		err = checkHashesFunc("meta", hashes)
+		require.NoError(t, err)
 
-	only256 := make(Hashes)
-	only256[notary.SHA256], err = hex.DecodeString("d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
-	require.NoError(t, err)
-	err = CheckHashes(raw, "meta", only256)
-	require.NoError(t, err)
+		// Expected as success since there are already supported hash here,
+		// just ignore the unsupported one.
+		hashes["Saar"] = []byte("survives again in CTM.")
+		err = checkHashesFunc("meta", hashes)
+		require.NoError(t, err)
 
-	only512 := make(Hashes)
-	only512[notary.SHA512], err = hex.DecodeString("f2330f50d0f3ee56cf0d7f66aad8205e0cb9972c323208ffaa914ef7b3c240ae4774b5bbd1db2ce226ee967cfa9058173a853944f9b44e2e08abca385e2b7ed4")
-	require.NoError(t, err)
-	err = CheckHashes(raw, "meta", only512)
-	require.NoError(t, err)
+		only256 := make(Hashes)
+		only256[notary.SHA256], err = hex.DecodeString("d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
+		require.NoError(t, err)
+		err = checkHashesFunc("meta", only256)
+		require.NoError(t, err)
 
-	// Expected to fail due to the failure of sha256
-	malicious256 := make(Hashes)
-	malicious256[notary.SHA256] = []byte("malicious data")
-	err = CheckHashes(raw, "metaName3", malicious256)
-	require.Error(t, err)
-	badChecksum, ok := err.(ErrMismatchedChecksum)
-	require.True(t, ok)
-	require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA256, name: "metaName3",
-		expected: hex.EncodeToString([]byte("malicious data"))}, badChecksum)
+		only512 := make(Hashes)
+		only512[notary.SHA512], err = hex.DecodeString("f2330f50d0f3ee56cf0d7f66aad8205e0cb9972c323208ffaa914ef7b3c240ae4774b5bbd1db2ce226ee967cfa9058173a853944f9b44e2e08abca385e2b7ed4")
+		require.NoError(t, err)
+		err = checkHashesFunc("meta", only512)
+		require.NoError(t, err)
 
-	// Expected to fail due to the failure of sha512
-	malicious512 := make(Hashes)
-	malicious512[notary.SHA512] = []byte("malicious data")
-	err = CheckHashes(raw, "metaName4", malicious512)
-	require.Error(t, err)
-	badChecksum, ok = err.(ErrMismatchedChecksum)
-	require.True(t, ok)
-	require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA512, name: "metaName4",
-		expected: hex.EncodeToString([]byte("malicious data"))}, badChecksum)
+		// Expected to fail due to the failure of sha256
+		malicious256 := make(Hashes)
+		malicious256[notary.SHA256] = []byte("malicious data")
+		err = checkHashesFunc("metaName3", malicious256)
+		require.Error(t, err)
+		badChecksum, ok := err.(ErrMismatchedChecksum)
+		require.True(t, ok)
+		require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA256, name: "metaName3",
+			expected: hex.EncodeToString([]byte("malicious data"))}, badChecksum)
 
-	// Expected to fail because of the failure of sha512
-	// even though the sha256 is OK.
-	doubleFace := make(Hashes)
-	doubleFace[notary.SHA256], err = hex.DecodeString(
-		"d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
-	require.NoError(t, err)
-	doubleFace[notary.SHA512], err = hex.DecodeString(
-		"d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
-	require.NoError(t, err)
-	err = CheckHashes(raw, "metaName5", doubleFace)
-	require.Error(t, err)
-	badChecksum, ok = err.(ErrMismatchedChecksum)
-	require.True(t, ok)
-	require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA512, name: "metaName5",
-		expected: "d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92"}, badChecksum)
+		// Expected to fail due to the failure of sha512
+		malicious512 := make(Hashes)
+		malicious512[notary.SHA512] = []byte("malicious data")
+		err = checkHashesFunc("metaName4", malicious512)
+		require.Error(t, err)
+		badChecksum, ok = err.(ErrMismatchedChecksum)
+		require.True(t, ok)
+		require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA512, name: "metaName4",
+			expected: hex.EncodeToString([]byte("malicious data"))}, badChecksum)
+
+		// Expected to fail because of the failure of sha512
+		// even though the sha256 is OK.
+		doubleFace := make(Hashes)
+		doubleFace[notary.SHA256], err = hex.DecodeString(
+			"d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
+		require.NoError(t, err)
+		doubleFace[notary.SHA512], err = hex.DecodeString(
+			"d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92")
+		require.NoError(t, err)
+		err = checkHashesFunc("metaName5", doubleFace)
+		require.Error(t, err)
+		badChecksum, ok = err.(ErrMismatchedChecksum)
+		require.True(t, ok)
+		require.EqualValues(t, ErrMismatchedChecksum{alg: notary.SHA512, name: "metaName5",
+			expected: "d13e2b60d74c2e6f4f449b5e536814edf9a4827f5a9f4f957fc92e77609b9c92"}, badChecksum)
+	}
 }
 
 func TestCheckValidHashStructures(t *testing.T) {
