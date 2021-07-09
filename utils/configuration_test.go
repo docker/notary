@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/bugsnag/bugsnag-go"
 	"github.com/sirupsen/logrus"
@@ -21,9 +22,11 @@ import (
 const envPrefix = "NOTARY_TESTING_ENV_PREFIX"
 
 const (
-	Cert = "../fixtures/notary-server.crt"
-	Key  = "../fixtures/notary-server.key"
-	Root = "../fixtures/root-ca.crt"
+	Cert   = "../fixtures/notary-server.crt"
+	Key    = "../fixtures/notary-server.key"
+	Root   = "../fixtures/root-ca.crt"
+	NoCert = "../fixtures/nonexistant.crt"
+	NoKey  = "../fixtures/nonexistant.key"
 )
 
 // initializes a viper object with test configuration
@@ -58,6 +61,27 @@ func TestParseInvalidLogLevel(t *testing.T) {
 		logrus.DebugLevel)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not a valid logrus Level")
+}
+
+func TestParseCertRotation(t *testing.T) {
+	d, err := ParseCertRotation(configure(`{"server": {"cert_rotation": "5m"}}`))
+	require.NoError(t, err)
+	require.Equal(t, 5*time.Minute, d)
+}
+
+func TestParseNoCertRotation(t *testing.T) {
+	empties := []string{`{}`, `{"server": {}}`}
+	for _, configJSON := range empties {
+		lvl, err := ParseCertRotation(configure(configJSON))
+		require.NoError(t, err)
+		require.Equal(t, 0*time.Second, lvl)
+	}
+}
+
+func TestParseInvalidCertRotation(t *testing.T) {
+	_, err := ParseCertRotation(configure(`{"server": {"cert_rotation": "42"}}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "time: missing unit in duration")
 }
 
 // If there is no logging level configured it is set to the default level
@@ -415,6 +439,54 @@ func TestParseTLSWithTLS(t *testing.T) {
 	require.Len(t, subjects, 1)
 	require.True(t, bytes.Equal(expectedRoot.RawSubject, subjects[0]))
 	require.Equal(t, tlsConfig.ClientAuth, tls.RequireAndVerifyClientCert)
+}
+
+// Verifies that the GetCertificate function on the TLS Config object gives us what we expect
+func TestTLSGetCertificate(t *testing.T) {
+	config := configure(fmt.Sprintf(`{
+		"server": {
+			"tls_cert_file": "%s",
+			"tls_key_file": "%s",
+			"client_ca_file": "%s",
+			"cert_rotation": "5m"
+		}
+	}`, Cert, Key, Root))
+
+	tlsConfig, err := ParseServerTLS(config, false)
+	require.NoError(t, err)
+
+	certificate, err := tlsConfig.GetCertificate(nil)
+	require.NoError(t, err)
+
+	require.Equal(t, tlsConfig.Certificates[0], *certificate)
+}
+
+func TestTLSInvalidGetCertificate(t *testing.T) {
+	config := configure(fmt.Sprintf(`{
+		"server": {
+			"tls_cert_file": "%s",
+			"tls_key_file": "%s",
+			"client_ca_file": "%s",
+			"cert_rotation": "42"
+		}
+	}`, Cert, Key, Root))
+
+	_, err := ParseServerTLS(config, false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "time: missing unit in duration")
+}
+
+// Checks the helper function that reloads the certificate with some bad cases (missing file or mismatch keypair)
+func TestLoadCertificateFailures(t *testing.T) {
+	// Cert DNE
+	_, err := loadCertificate(NoCert, Key)
+	require.Error(t, err)
+	// Key DNE
+	_, err = loadCertificate(Cert, NoKey)
+	require.Error(t, err)
+	// Mismatched
+	_, err = loadCertificate(Cert, Cert)
+	require.Error(t, err)
 }
 
 func TestParseTLSWithTLSRelativeToConfigFile(t *testing.T) {

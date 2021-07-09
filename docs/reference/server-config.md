@@ -28,7 +28,8 @@ learn more about the configuration section corresponding to that key:
   <a href="#server-section-required">"server"</a>: {
     "http_addr": ":4443",
     "tls_key_file": "./fixtures/notary-server.key",
-    "tls_cert_file": "./fixtures/notary-server.crt"
+    "tls_cert_file": "./fixtures/notary-server.crt",
+    "cert_rotation": "1h"
   },
   <a href="#trust-service-section-required">"trust_service"</a>: {
     "type": "remote",
@@ -81,7 +82,8 @@ Example:
 "server": {
   "http_addr": ":4443",
   "tls_key_file": "./fixtures/notary-server.key",
-  "tls_cert_file": "./fixtures/notary-server.crt"
+  "tls_cert_file": "./fixtures/notary-server.crt",
+  "cert_rotation": "1h"
 }
 ```
 
@@ -123,6 +125,14 @@ Example:
 			at all. If neither are provided, the server will use HTTP instead
 			of HTTPS. The path is relative to the directory of the
 			configuration file.</td>
+	</tr>
+	<tr>
+		<td valign="top"><code>cert_rotation</code></td>
+		<td valign="top">no</td>
+		<td valign="top">The period at which to rotate the certificate.
+            By default will use a period of '0', meaning no rotation. Depends
+            on <code>tls_cert_file</code>, re-reading the file at the specified
+            interval.</td>
 	</tr>
 </table>
 

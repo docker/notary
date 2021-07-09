@@ -5,10 +5,13 @@ package utils
 import (
 	"crypto/tls"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	bugsnag_hook "github.com/Shopify/logrus-bugsnag"
 	"github.com/bugsnag/bugsnag-go"
@@ -76,7 +79,81 @@ func ParseServerTLS(configuration *viper.Viper, tlsRequired bool) (*tls.Config, 
 		}
 	}
 
-	return tlsconfig.Server(tlsOpts)
+	// Fetch TLS config as usual
+	conf, err := tlsconfig.Server(tlsOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get rotation information from config file
+	rotationPeriod, err := ParseCertRotation(configuration)
+	if err != nil {
+		return nil, err
+	}
+
+	return configureRotation(conf, tlsOpts.CertFile, tlsOpts.KeyFile, rotationPeriod)
+}
+
+// configureRotation updates the tlsConfig struct passed in to update an in-memory copy of a cert/key
+// at a configured rate. GetCertificate on that tlsConfig will then return a timely copy of the cert/key.
+func configureRotation(conf *tls.Config, cert, key string, period time.Duration) (*tls.Config, error) {
+	// Rotation period of 0 means no rotation
+	if period == 0 {
+		return conf, nil
+	}
+	// Setup a function that will continually call itself at some interval
+	var (
+		reloadCert *tls.Certificate
+		m          sync.RWMutex
+		resetCert  func()
+		err        error
+	)
+	resetCert = func() {
+		m.Lock()
+		defer m.Unlock()
+		reloadCert, err = loadCertificate(cert, key)
+		if err != nil {
+			logrus.Warnf("failed to (re)load certificate %s", err)
+		}
+		// Re-run this function at configured rate
+		time.AfterFunc(period, resetCert)
+	}
+	resetCert()
+
+	conf.GetCertificate = func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		m.RLock()
+		defer m.RUnlock()
+		return reloadCert, err
+	}
+
+	return conf, nil
+}
+
+// loadCertificate Helper function for retrieving Helper function for retrieving TLS certificate data from disk.
+func loadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
+	cert, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		return nil, err
+	}
+	key, err := ioutil.ReadFile(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	pair, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		return nil, err
+	}
+	return &pair, nil
+}
+
+// ParseCertRotation tries to parse out a certificate rotation period from a Viper.
+// If there is no configuration, defaults to no rotation (period of 0).
+func ParseCertRotation(configuration *viper.Viper) (time.Duration, error) {
+	rotationConfig := configuration.GetString("server.cert_rotation")
+	if rotationConfig == "" {
+		rotationConfig = "0s"
+	}
+	return time.ParseDuration(rotationConfig)
 }
 
 // ParseLogLevel tries to parse out a log level from a Viper.  If there is no

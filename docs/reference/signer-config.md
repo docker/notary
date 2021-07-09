@@ -28,7 +28,8 @@ learn more about the configuration section corresponding to that key:
     "grpc_addr": ":7899",
     "tls_cert_file": "./fixtures/notary-signer.crt",
     "tls_key_file": "./fixtures/notary-signer.key",
-    "client_ca_file": "./fixtures/notary-server.crt"
+    "client_ca_file": "./fixtures/notary-server.crt",
+    "cert_rotation": "1h"
   },
   <a href="../common-configs/#logging-section-optional">"logging"</a>: {
     "level": 2
@@ -59,7 +60,8 @@ Example:
   "grpc_addr": ":7899",
   "tls_cert_file": "./fixtures/notary-signer.crt",
   "tls_key_file": "./fixtures/notary-signer.key",
-  "client_ca_file": "./fixtures/notary-server.crt"
+  "client_ca_file": "./fixtures/notary-server.crt",
+  "cert_rotation": "1h"
 }
 ```
 
@@ -108,6 +110,14 @@ Example:
 			this root. If not provided, mutual authentication will not be
 			required. The path is relative to the directory of the
 			configuration file.</td>
+	</tr>
+	<tr>
+		<td valign="top"><code>cert_rotation</code></td>
+		<td valign="top">no</td>
+		<td valign="top">The period at which to rotate the certificate.
+            By default will use a period of '0', meaning no rotation. Depends
+            on <code>tls_cert_file</code>, re-reading the file at the specified
+            interval.</td>
 	</tr>
 </table>
 
