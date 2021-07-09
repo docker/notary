@@ -23,7 +23,7 @@ Changes to the [Repo Guidelines](#repo-guidelines) require a simple majority.
 - Invitation is proposed by an existing maintainer.
 - Ceiling(two-thirds) supermajority approval from existing maintainers (including vote of proposing maintainer) required to accept proposal.
 - Newly approved maintainer submits PR adding themselves to the MAINTAINERS file.
-- Existing maintainers publicly mark their approval on the PR.
+- Existing maintainers (again, two-thirds) publicly mark their approval on the PR.
 - Existing maintainer updates repository permissions to grant write access to new maintainer.
 - New maintainer merges their PR.
 
