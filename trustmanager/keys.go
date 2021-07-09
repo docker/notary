@@ -225,7 +225,8 @@ func checkValidity(block *pem.Block) (string, error) {
 
 		decodedKey, err := utils.ParsePEMPrivateKey(pem.EncodeToMemory(block), "")
 		if err != nil {
-			logrus.Warn("failed to import key to store: Invalid key generated, key may be encrypted and does not contain path header")
+			logrus.Warn("failed to import key to store: Invalid key generated, key may be encrypted and does not contain path header. \nCurrent pem block is skipped. \nImport will continue attempting to read the remaining pem blocks in the file
+			")
 			return "", errors.New("invalid key pem block")
 		}
 		loc = decodedKey.ID()
